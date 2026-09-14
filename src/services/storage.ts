@@ -1,0 +1,1644 @@
+import {
+  User,
+  Business,
+  Product,
+  InventoryMovement,
+  StockReceipt,
+  Sale,
+  Supplier,
+  AuditLog,
+  SupportSettings,
+  SupportTicket
+} from '../types';
+
+const STORAGE_KEYS = {
+  USERS: 'ssm_users_v2',
+  BUSINESSES: 'ssm_businesses_v2',
+  PRODUCTS: 'ssm_products_v2',
+  MOVEMENTS: 'ssm_movements_v2',
+  RECEIPTS: 'ssm_receipts_v2',
+  SALES: 'ssm_sales_v2',
+  SUPPLIERS: 'ssm_suppliers_v2',
+  AUDIT_LOGS: 'ssm_audit_logs_v2',
+  CURRENT_USER: 'ssm_current_user_v2',
+  SUPPORT_SETTINGS: 'ssm_support_settings_v2',
+  SUPPORT_TICKETS: 'ssm_support_tickets_v2',
+};
+
+const DEFAULT_SUPPORT_SETTINGS: SupportSettings = {
+  whatsappNumber: '+8801859340742',
+  facebookMessengerUrl: 'https://www.facebook.com/nazim.hossaim.413123',
+  supportEmail: 'imranmahmud1122.test@gmail.com',
+  supportPhone: '+880 1859-340742',
+  whatsappPresetMessage: 'Hello Smart Product Manager Support, I need assistance with ',
+};
+
+const INITIAL_SUPPORT_TICKETS: SupportTicket[] = [
+  {
+    id: 'TICKET-1001',
+    userName: 'David Harris',
+    businessName: 'Metro Supermarket & Mart',
+    email: 'owner@metro.com',
+    category: 'Stock Problem',
+    description: 'Need assistance setting up automatic low-stock alerts for high turnover dairy products.',
+    status: 'in_progress',
+    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+    businessId: 'SHOP-001',
+    userId: 'USR-METRO'
+  },
+  {
+    id: 'TICKET-1002',
+    userName: 'Sarah Jenkins',
+    businessName: 'Fresh Valley Organic Market',
+    email: 'owner@freshvalley.com',
+    category: 'Payment / Subscription',
+    description: 'Question regarding custom currency format and receipt tax calculation customization.',
+    status: 'open',
+    createdAt: new Date(Date.now() - 86400000 * 1).toISOString(),
+    businessId: 'SHOP-002',
+    userId: 'USR-VALLEY'
+  }
+];
+
+// Seed Initial Data
+const INITIAL_USERS: User[] = [
+  {
+    id: 'USR-ADMIN-IMRAN',
+    email: 'imranmahmud1122.test@gmail.com',
+    name: 'Imran Mahmud',
+    role: 'super_admin',
+    businessId: null,
+    phone: '+880 1711-000000',
+    createdAt: '2026-01-01T00:00:00Z',
+    status: 'active',
+  },
+  {
+    id: 'USR-ADMIN',
+    email: 'admin@smartsupermarket.com',
+    name: 'Super Administrator',
+    role: 'super_admin',
+    businessId: null,
+    phone: '+880 1711-000000',
+    createdAt: '2026-01-01T00:00:00Z',
+    status: 'active',
+  },
+  {
+    id: 'USR-METRO',
+    email: 'owner@metro.com',
+    name: 'David Harris',
+    role: 'business_owner',
+    businessId: 'SHOP-001',
+    businessName: 'Metro Supermarket & Mart',
+    phone: '+880 1812-345678',
+    createdAt: '2026-02-10T09:00:00Z',
+    status: 'active',
+  },
+  {
+    id: 'USR-METRO-CASHIER',
+    email: 'cashier@metro.com',
+    name: 'Rahim Ahmed (Cashier)',
+    role: 'cashier',
+    businessId: 'SHOP-001',
+    businessName: 'Metro Supermarket & Mart',
+    phone: '+880 1912-345679',
+    createdAt: '2026-02-15T09:00:00Z',
+    status: 'active',
+  },
+  {
+    id: 'USR-VALLEY',
+    email: 'owner@freshvalley.com',
+    name: 'Sarah Jenkins',
+    role: 'business_owner',
+    businessId: 'SHOP-002',
+    businessName: 'Fresh Valley Organic Market',
+    phone: '+880 1712-876543',
+    createdAt: '2026-03-01T10:30:00Z',
+    status: 'active',
+  },
+];
+
+const INITIAL_BUSINESSES: Business[] = [
+  {
+    id: 'SHOP-001',
+    name: 'Metro Supermarket & Mart',
+    ownerName: 'David Harris',
+    ownerId: 'USR-METRO',
+    email: 'owner@metro.com',
+    phone: '+880 1812-345678',
+    address: 'Gulshan 2 Commercial Area, Dhaka',
+    businessType: 'Supermarket',
+    logoUrl: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=200&auto=format&fit=crop&q=80',
+    currencySymbol: '৳',
+    taxRate: 5.0,
+    status: 'active',
+    createdAt: '2026-02-10T09:00:00Z',
+    description: 'Premier urban supermarket providing daily essentials, fresh dairy, groceries, and consumer goods.',
+  },
+  {
+    id: 'SHOP-002',
+    name: 'Fresh Valley Organic Market',
+    ownerName: 'Sarah Jenkins',
+    ownerId: 'USR-VALLEY',
+    email: 'owner@freshvalley.com',
+    phone: '+880 1712-876543',
+    address: 'Dhanmondi Road 27, Dhaka',
+    businessType: 'Organic Market',
+    logoUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=200&auto=format&fit=crop&q=80',
+    currencySymbol: '৳',
+    taxRate: 4.0,
+    status: 'active',
+    createdAt: '2026-03-01T10:30:00Z',
+    description: 'Certified organic and artisan food market specializing in farm-fresh produce and health foods.',
+  },
+];
+
+const INITIAL_PRODUCTS: Product[] = [
+  // SHOP-001 Products
+  {
+    id: 'PROD-001',
+    businessId: 'SHOP-001',
+    name: 'Fresh Whole Milk 1 Gallon',
+    description: 'Fresh pasteurized Grade A whole milk with vitamin D. Sourced daily from local dairy farms.',
+    category: 'Dairy & Eggs',
+    brand: 'Valley Dairy',
+    sku: 'MILK-WHL-1G',
+    barcode: '890103001',
+    purchasePrice: 2.80,
+    sellingPrice: 4.29,
+    openingStock: 50,
+    totalReceived: 80,
+    totalSold: 45,
+    stockAdjustments: 0,
+    currentStock: 85, // 50 + 80 - 45 = 85
+    minStockLevel: 25,
+    maxStockLevel: 150,
+    supplier: 'Golden Valley Dairy Ltd.',
+    batchNumber: 'BCH-2026-M09',
+    expiryDate: '2026-10-15',
+    unit: 'bottle',
+    notes: 'Keep refrigerated between 34°F and 38°F',
+    imageUrl: 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=400&auto=format&fit=crop&q=80',
+    isPublic: true,
+    status: 'active',
+    createdAt: '2026-08-01T08:00:00Z',
+    updatedAt: '2026-09-10T11:00:00Z',
+  },
+  {
+    id: 'PROD-002',
+    businessId: 'SHOP-001',
+    name: 'Basmati Premium Long Grain Rice 5kg',
+    description: 'Aged Himalayan long grain aromatic basmati rice. Fluffy and non-sticky when cooked.',
+    category: 'Pantry & Grains',
+    brand: 'Royal Harvest',
+    sku: 'RICE-BAS-5KG',
+    barcode: '890103002',
+    purchasePrice: 9.50,
+    sellingPrice: 15.99,
+    openingStock: 30,
+    totalReceived: 40,
+    totalSold: 28,
+    stockAdjustments: 0,
+    currentStock: 42, // 30 + 40 - 28 = 42
+    minStockLevel: 15,
+    maxStockLevel: 100,
+    supplier: 'Apex Global Imports',
+    batchNumber: 'BCH-2026-R02',
+    expiryDate: '2027-08-30',
+    unit: 'packet',
+    notes: 'Store in cool and dry airtight container',
+    imageUrl: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400&auto=format&fit=crop&q=80',
+    isPublic: true,
+    status: 'active',
+    createdAt: '2026-08-01T08:00:00Z',
+    updatedAt: '2026-09-08T14:00:00Z',
+  },
+  {
+    id: 'PROD-003',
+    businessId: 'SHOP-001',
+    name: 'Classic Cola Soda Can (Pack of 6)',
+    description: 'Original refreshing carbonated soda cans. Crisp effervescence and balanced sweet cola flavor.',
+    category: 'Beverages',
+    brand: 'Coca-Cola',
+    sku: 'SODA-COLA-6PK',
+    barcode: '890103003',
+    purchasePrice: 3.20,
+    sellingPrice: 5.49,
+    openingStock: 80,
+    totalReceived: 120,
+    totalSold: 192,
+    stockAdjustments: 0,
+    currentStock: 8, // 80 + 120 - 192 = 8 -> LOW STOCK & Restock Recommended!
+    minStockLevel: 20,
+    maxStockLevel: 250,
+    supplier: 'Metro Beverage Distributors',
+    batchNumber: 'BCH-2026-CC1',
+    expiryDate: '2027-02-15',
+    unit: 'pack',
+    notes: 'High velocity seller, auto replenishment needed',
+    imageUrl: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=400&auto=format&fit=crop&q=80',
+    isPublic: true,
+    status: 'active',
+    createdAt: '2026-08-01T08:00:00Z',
+    updatedAt: '2026-09-12T16:00:00Z',
+  },
+  {
+    id: 'PROD-004',
+    businessId: 'SHOP-001',
+    name: 'Artisan Sourdough Loaf 500g',
+    description: 'Naturally fermented rustic sourdough with a crunchy crust and tender open crumb.',
+    category: 'Bakery',
+    brand: 'Baker & Mill',
+    sku: 'BKR-SRD-500G',
+    barcode: '890103004',
+    purchasePrice: 2.10,
+    sellingPrice: 3.99,
+    openingStock: 25,
+    totalReceived: 30,
+    totalSold: 47,
+    stockAdjustments: -1,
+    currentStock: 7, // 25 + 30 - 1 - 47 = 7 -> Low Stock
+    minStockLevel: 10,
+    maxStockLevel: 60,
+    supplier: 'Artisan Bakery Co.',
+    batchNumber: 'BCH-2026-B12',
+    expiryDate: '2026-09-20',
+    unit: 'pcs',
+    notes: 'Fresh bake received every morning at 7:00 AM',
+    imageUrl: 'https://images.unsplash.com/photo-1589367920969-ab8e050bbb04?w=400&auto=format&fit=crop&q=80',
+    isPublic: true,
+    status: 'active',
+    createdAt: '2026-08-05T09:00:00Z',
+    updatedAt: '2026-09-13T07:00:00Z',
+  },
+  {
+    id: 'PROD-005',
+    businessId: 'SHOP-001',
+    name: 'Extra Virgin Olive Oil 750ml',
+    description: 'Cold-pressed extra virgin olive oil from Mediterranean olives. Rich aroma and peppery finish.',
+    category: 'Pantry & Grains',
+    brand: 'Terra Gold',
+    sku: 'OIL-EVOO-750M',
+    barcode: '890103005',
+    purchasePrice: 8.00,
+    sellingPrice: 13.50,
+    openingStock: 40,
+    totalReceived: 20,
+    totalSold: 18,
+    stockAdjustments: 0,
+    currentStock: 42,
+    minStockLevel: 12,
+    maxStockLevel: 80,
+    supplier: 'Apex Global Imports',
+    batchNumber: 'BCH-2026-OL4',
+    expiryDate: '2027-11-30',
+    unit: 'bottle',
+    notes: 'Premium dark glass bottle protection',
+    imageUrl: 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=400&auto=format&fit=crop&q=80',
+    isPublic: false, // Private product example
+    status: 'active',
+    createdAt: '2026-08-06T10:00:00Z',
+    updatedAt: '2026-09-02T15:00:00Z',
+  },
+  {
+    id: 'PROD-006',
+    businessId: 'SHOP-001',
+    name: 'Fresh Organic Bananas (Per Kg)',
+    description: 'Sweet and creamy high-potassium yellow bananas, ethically harvested from sustainable farms.',
+    category: 'Fresh Produce',
+    brand: 'Farm Fresh',
+    sku: 'PRD-BAN-1KG',
+    barcode: '890103006',
+    purchasePrice: 0.90,
+    sellingPrice: 1.79,
+    openingStock: 100,
+    totalReceived: 150,
+    totalSold: 190,
+    stockAdjustments: -2,
+    currentStock: 58,
+    minStockLevel: 30,
+    maxStockLevel: 250,
+    supplier: 'Green Valley Produce',
+    batchNumber: 'BCH-2026-BN3',
+    expiryDate: '2026-09-22',
+    unit: 'kg',
+    notes: 'Daily turnover item',
+    imageUrl: 'https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?w=400&auto=format&fit=crop&q=80',
+    isPublic: true,
+    status: 'active',
+    createdAt: '2026-08-01T08:00:00Z',
+    updatedAt: '2026-09-12T10:00:00Z',
+  },
+
+  // SHOP-002 Products (Strictly isolated to Fresh Valley Organic Market)
+  {
+    id: 'PROD-201',
+    businessId: 'SHOP-002',
+    name: 'Organic Honeycomb Pure Honey 500g',
+    description: 'Raw unfiltered clover blossom honey with raw comb section. Rich in natural floral enzymes.',
+    category: 'Pantry & Grains',
+    brand: 'Valley Bee Co.',
+    sku: 'ORG-HNY-500G',
+    barcode: '890203001',
+    purchasePrice: 6.50,
+    sellingPrice: 11.99,
+    openingStock: 20,
+    totalReceived: 35,
+    totalSold: 16,
+    stockAdjustments: 0,
+    currentStock: 39,
+    minStockLevel: 10,
+    maxStockLevel: 60,
+    supplier: 'Highland Apiaries',
+    batchNumber: 'BCH-ORG-H01',
+    expiryDate: '2028-06-30',
+    unit: 'bottle',
+    notes: '100% pure raw unprocessed honey',
+    imageUrl: 'https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=400&auto=format&fit=crop&q=80',
+    isPublic: true,
+    status: 'active',
+    createdAt: '2026-08-10T10:00:00Z',
+    updatedAt: '2026-09-05T12:00:00Z',
+  },
+  {
+    id: 'PROD-202',
+    businessId: 'SHOP-002',
+    name: 'Organic Hass Avocados (Pack of 4)',
+    description: 'Ripe and ready-to-eat rich buttery Hass avocados. Certified USDA Organic.',
+    category: 'Fresh Produce',
+    brand: 'Emerald Groves',
+    sku: 'ORG-AVO-4PK',
+    barcode: '890203002',
+    purchasePrice: 3.50,
+    sellingPrice: 5.99,
+    openingStock: 40,
+    totalReceived: 50,
+    totalSold: 84,
+    stockAdjustments: 0,
+    currentStock: 6, // Low stock
+    minStockLevel: 15,
+    maxStockLevel: 100,
+    supplier: 'Pacific Organic Cooperative',
+    batchNumber: 'BCH-ORG-AV2',
+    expiryDate: '2026-09-24',
+    unit: 'pack',
+    notes: 'Customer favorite item',
+    imageUrl: 'https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?w=400&auto=format&fit=crop&q=80',
+    isPublic: true,
+    status: 'active',
+    createdAt: '2026-08-10T10:00:00Z',
+    updatedAt: '2026-09-12T14:00:00Z',
+  },
+];
+
+const INITIAL_SUPPLIERS: Supplier[] = [
+  {
+    id: 'SUP-001',
+    businessId: 'SHOP-001',
+    name: 'Golden Valley Dairy Ltd.',
+    contactPerson: 'Robert Miller',
+    email: 'orders@goldenvalleydairy.com',
+    phone: '+1 (555) 443-2211',
+    address: '12 Farmstead Way, Dairy Valley',
+    suppliedCategories: ['Dairy & Eggs'],
+    status: 'active',
+    createdAt: '2026-02-15T08:00:00Z',
+  },
+  {
+    id: 'SUP-002',
+    businessId: 'SHOP-001',
+    name: 'Apex Global Imports',
+    contactPerson: 'Elena Rostova',
+    email: 'supply@apeximports.com',
+    phone: '+1 (555) 667-8899',
+    address: '88 Harbour Quay, Logistics Terminal 4',
+    suppliedCategories: ['Pantry & Grains', 'Snacks & Confectionery'],
+    status: 'active',
+    createdAt: '2026-02-18T09:00:00Z',
+  },
+  {
+    id: 'SUP-003',
+    businessId: 'SHOP-001',
+    name: 'Metro Beverage Distributors',
+    contactPerson: 'Mark Davis',
+    email: 'orders@metrobev.com',
+    phone: '+1 (555) 991-0022',
+    address: '45 Bottler Lane, Industrial Park',
+    suppliedCategories: ['Beverages'],
+    status: 'active',
+    createdAt: '2026-02-20T10:00:00Z',
+  },
+  {
+    id: 'SUP-201',
+    businessId: 'SHOP-002',
+    name: 'Pacific Organic Cooperative',
+    contactPerson: 'Clara Vance',
+    email: 'sales@pacificorganic.org',
+    phone: '+1 (555) 332-1144',
+    address: '500 Coastal Way, Valley Farm',
+    suppliedCategories: ['Fresh Produce', 'Pantry & Grains'],
+    status: 'active',
+    createdAt: '2026-03-05T11:00:00Z',
+  },
+];
+
+const INITIAL_MOVEMENTS: InventoryMovement[] = [
+  {
+    id: 'MOV-1001',
+    businessId: 'SHOP-001',
+    productId: 'PROD-001',
+    productName: 'Fresh Whole Milk 1 Gallon',
+    sku: 'MILK-WHL-1G',
+    type: 'OPENING',
+    quantity: 50,
+    previousStock: 0,
+    newStock: 50,
+    referenceId: 'SYS-INIT-001',
+    notes: 'Initial opening stock intake',
+    createdAt: '2026-08-01T08:00:00Z',
+    performedBy: 'David Harris',
+  },
+  {
+    id: 'MOV-1002',
+    businessId: 'SHOP-001',
+    productId: 'PROD-001',
+    productName: 'Fresh Whole Milk 1 Gallon',
+    sku: 'MILK-WHL-1G',
+    type: 'RECEIVING',
+    quantity: 80,
+    previousStock: 50,
+    newStock: 130,
+    referenceId: 'INV-GV-8821',
+    unitCost: 2.80,
+    notes: 'Stock received from Golden Valley Dairy',
+    createdAt: '2026-08-15T10:00:00Z',
+    performedBy: 'David Harris',
+  },
+  {
+    id: 'MOV-1003',
+    businessId: 'SHOP-001',
+    productId: 'PROD-001',
+    productName: 'Fresh Whole Milk 1 Gallon',
+    sku: 'MILK-WHL-1G',
+    type: 'SALE',
+    quantity: 45,
+    previousStock: 130,
+    newStock: 85,
+    referenceId: 'POS-REC-1049',
+    notes: 'Point of sale customer transactions',
+    createdAt: '2026-09-10T18:00:00Z',
+    performedBy: 'David Harris',
+  },
+  {
+    id: 'MOV-1004',
+    businessId: 'SHOP-001',
+    productId: 'PROD-003',
+    productName: 'Classic Cola Soda Can (Pack of 6)',
+    sku: 'SODA-COLA-6PK',
+    type: 'OPENING',
+    quantity: 80,
+    previousStock: 0,
+    newStock: 80,
+    referenceId: 'SYS-INIT-002',
+    notes: 'Initial opening stock intake',
+    createdAt: '2026-08-01T08:00:00Z',
+    performedBy: 'David Harris',
+  },
+  {
+    id: 'MOV-1005',
+    businessId: 'SHOP-001',
+    productId: 'PROD-003',
+    productName: 'Classic Cola Soda Can (Pack of 6)',
+    sku: 'SODA-COLA-6PK',
+    type: 'RECEIVING',
+    quantity: 120,
+    previousStock: 80,
+    newStock: 200,
+    referenceId: 'INV-MBD-441',
+    unitCost: 3.20,
+    notes: 'Stock delivery from Metro Beverage',
+    createdAt: '2026-08-20T11:00:00Z',
+    performedBy: 'David Harris',
+  },
+  {
+    id: 'MOV-1006',
+    businessId: 'SHOP-001',
+    productId: 'PROD-003',
+    productName: 'Classic Cola Soda Can (Pack of 6)',
+    sku: 'SODA-COLA-6PK',
+    type: 'SALE',
+    quantity: 192,
+    previousStock: 200,
+    newStock: 8,
+    referenceId: 'POS-REC-1080',
+    notes: 'High demand weekend beverage sales',
+    createdAt: '2026-09-12T16:00:00Z',
+    performedBy: 'David Harris',
+  },
+];
+
+const INITIAL_SALES: Sale[] = [
+  {
+    id: 'SALE-101',
+    businessId: 'SHOP-001',
+    invoiceNumber: 'INV-2026-001',
+    customerName: 'Alice Walker',
+    customerPhone: '+1 555-4321',
+    items: [
+      {
+        productId: 'PROD-001',
+        productName: 'Fresh Whole Milk 1 Gallon',
+        sku: 'MILK-WHL-1G',
+        barcode: '890103001',
+        unitPrice: 4.29,
+        costPrice: 2.80,
+        quantity: 2,
+        subtotal: 8.58,
+        unit: 'bottle',
+      },
+      {
+        productId: 'PROD-003',
+        productName: 'Classic Cola Soda Can (Pack of 6)',
+        sku: 'SODA-COLA-6PK',
+        barcode: '890103003',
+        unitPrice: 5.49,
+        costPrice: 3.20,
+        quantity: 3,
+        subtotal: 16.47,
+        unit: 'pack',
+      },
+    ],
+    subtotal: 25.05,
+    discount: 0,
+    tax: 1.25,
+    totalAmount: 26.30,
+    paymentMethod: 'cash',
+    paymentStatus: 'paid',
+    receivedAmount: 30.00,
+    changeAmount: 3.70,
+    notes: 'Customer paid with cash $30 bill',
+    createdAt: '2026-09-12T14:30:00Z',
+    cashierName: 'David Harris',
+  },
+  {
+    id: 'SALE-102',
+    businessId: 'SHOP-001',
+    invoiceNumber: 'INV-2026-002',
+    customerName: 'Marcus Sterling',
+    customerPhone: '+1 555-8890',
+    items: [
+      {
+        productId: 'PROD-002',
+        productName: 'Basmati Premium Long Grain Rice 5kg',
+        sku: 'RICE-BAS-5KG',
+        barcode: '890103002',
+        unitPrice: 15.99,
+        costPrice: 9.50,
+        quantity: 1,
+        subtotal: 15.99,
+        unit: 'packet',
+      },
+      {
+        productId: 'PROD-004',
+        productName: 'Artisan Sourdough Loaf 500g',
+        sku: 'BKR-SRD-500G',
+        barcode: '890103004',
+        unitPrice: 3.99,
+        costPrice: 2.10,
+        quantity: 2,
+        subtotal: 7.98,
+        unit: 'pcs',
+      },
+    ],
+    subtotal: 23.97,
+    discount: 1.00,
+    tax: 1.15,
+    totalAmount: 24.12,
+    paymentMethod: 'card',
+    paymentStatus: 'paid',
+    receivedAmount: 24.12,
+    changeAmount: 0.00,
+    notes: 'Chip card payment accepted',
+    createdAt: '2026-09-13T03:15:00Z',
+    cashierName: 'David Harris',
+  },
+];
+
+const INITIAL_AUDIT_LOGS: AuditLog[] = [
+  {
+    id: 'LOG-001',
+    businessId: 'SHOP-001',
+    businessName: 'Metro Supermarket & Mart',
+    userId: 'USR-METRO',
+    userName: 'David Harris',
+    userRole: 'business_owner',
+    action: 'INIT_STORE',
+    details: 'Workspace initialized with 6 core products',
+    timestamp: '2026-08-01T08:00:00Z',
+  },
+  {
+    id: 'LOG-002',
+    businessId: null,
+    userId: 'USR-ADMIN',
+    userName: 'Super Administrator',
+    userRole: 'super_admin',
+    action: 'PLATFORM_CHECK',
+    details: 'Routine multi-tenant system integrity check passed',
+    timestamp: '2026-09-01T00:00:00Z',
+  },
+];
+
+// Helper to safely read and write to LocalStorage
+function getFromStorage<T>(key: string, defaultValue: T): T {
+  try {
+    const item = localStorage.getItem(key);
+    if (!item) {
+      localStorage.setItem(key, JSON.stringify(defaultValue));
+      return defaultValue;
+    }
+    return JSON.parse(item);
+  } catch (err) {
+    console.error(`Error reading ${key} from storage:`, err);
+    return defaultValue;
+  }
+}
+
+function setToStorage<T>(key: string, value: T): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (err) {
+    console.error(`Error saving ${key} to storage:`, err);
+  }
+}
+
+// Ensure database initialization
+export function initializeStorage(): void {
+  if (!localStorage.getItem(STORAGE_KEYS.USERS)) {
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
+  } else {
+    // Ensure all demo users exist
+    try {
+      const existingUsers: User[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]');
+      let updated = false;
+      INITIAL_USERS.forEach((initUser) => {
+        if (!existingUsers.some((u) => u.email.toLowerCase() === initUser.email.toLowerCase())) {
+          existingUsers.push(initUser);
+          updated = true;
+        }
+      });
+      if (updated) {
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(existingUsers));
+      }
+    } catch (e) {
+      console.error('User migration error:', e);
+    }
+  }
+
+  if (!localStorage.getItem(STORAGE_KEYS.BUSINESSES)) {
+    localStorage.setItem(STORAGE_KEYS.BUSINESSES, JSON.stringify(INITIAL_BUSINESSES));
+  } else {
+    // Migrate any stored business currencySymbol from '$' to '৳' (BDT)
+    try {
+      const storedBiz: Business[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.BUSINESSES) || '[]');
+      let changed = false;
+      const updatedBiz = storedBiz.map((b) => {
+        if (!b.currencySymbol || b.currencySymbol === '$') {
+          changed = true;
+          return { ...b, currencySymbol: '৳' };
+        }
+        return b;
+      });
+      if (changed) {
+        localStorage.setItem(STORAGE_KEYS.BUSINESSES, JSON.stringify(updatedBiz));
+      }
+    } catch (e) {
+      console.error('Currency migration error:', e);
+    }
+  }
+
+  if (!localStorage.getItem(STORAGE_KEYS.PRODUCTS)) {
+    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(INITIAL_PRODUCTS));
+  }
+  if (!localStorage.getItem(STORAGE_KEYS.SUPPLIERS)) {
+    localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(INITIAL_SUPPLIERS));
+  }
+  if (!localStorage.getItem(STORAGE_KEYS.MOVEMENTS)) {
+    localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(INITIAL_MOVEMENTS));
+  }
+  if (!localStorage.getItem(STORAGE_KEYS.SALES)) {
+    localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify(INITIAL_SALES));
+  }
+  if (!localStorage.getItem(STORAGE_KEYS.AUDIT_LOGS)) {
+    localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(INITIAL_AUDIT_LOGS));
+  }
+}
+
+// Data Access Layer (Repository)
+export const db = {
+  // Authentication & Session
+  getCurrentUser(): User | null {
+    return getFromStorage<User | null>(STORAGE_KEYS.CURRENT_USER, null);
+  },
+
+  setCurrentUser(user: User | null): void {
+    setToStorage(STORAGE_KEYS.CURRENT_USER, user);
+  },
+
+  logout(): void {
+    this.setCurrentUser(null);
+  },
+
+  getUsers(): User[] {
+    return getFromStorage<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+  },
+
+  addUser(userData: {
+    email: string;
+    password?: string;
+    name: string;
+    role: User['role'];
+    businessId: string;
+    phone?: string;
+  }): User {
+    const users = this.getUsers();
+    const newUser: User = {
+      id: `USR-${Date.now().toString(36).toUpperCase()}`,
+      email: userData.email,
+      name: userData.name,
+      role: userData.role,
+      businessId: userData.businessId,
+      phone: userData.phone || '',
+      createdAt: new Date().toISOString(),
+      status: 'active',
+    };
+    users.push(newUser);
+    setToStorage(STORAGE_KEYS.USERS, users);
+    return newUser;
+  },
+
+  findUserByEmail(email: string): User | undefined {
+    const clean = email.trim().toLowerCase();
+    const users = this.getUsers();
+    const found = users.find((u) => u.email.toLowerCase() === clean);
+
+    if (found) {
+      if (clean === 'imranmahmud1122.test@gmail.com' && found.role !== 'super_admin') {
+        found.role = 'super_admin';
+        setToStorage(STORAGE_KEYS.USERS, users);
+      }
+      return found;
+    }
+
+    // Auto-create Super Admin if imranmahmud1122.test@gmail.com
+    if (clean === 'imranmahmud1122.test@gmail.com') {
+      const superAdminUser: User = {
+        id: 'USR-ADMIN-IMRAN',
+        email: 'imranmahmud1122.test@gmail.com',
+        name: 'Imran Mahmud',
+        role: 'super_admin',
+        businessId: null,
+        phone: '+880 1711-000000',
+        createdAt: new Date().toISOString(),
+        status: 'active',
+      };
+      users.push(superAdminUser);
+      setToStorage(STORAGE_KEYS.USERS, users);
+      return superAdminUser;
+    }
+
+    return undefined;
+  },
+
+  // Business / Tenant Management
+  getBusinesses(): Business[] {
+    const list = getFromStorage<Business[]>(STORAGE_KEYS.BUSINESSES, INITIAL_BUSINESSES);
+    let updated = false;
+    const sanitized = list.map((b) => {
+      if (!b.currencySymbol || b.currencySymbol === '$') {
+        updated = true;
+        return { ...b, currencySymbol: '৳' };
+      }
+      return b;
+    });
+    if (updated) {
+      setToStorage(STORAGE_KEYS.BUSINESSES, sanitized);
+    }
+    return sanitized;
+  },
+
+  getBusinessById(businessId: string): Business | undefined {
+    const businesses = this.getBusinesses();
+    return businesses.find((b) => b.id === businessId);
+  },
+
+  registerBusiness(data: {
+    ownerName: string;
+    businessName?: string;
+    name?: string;
+    email: string;
+    password?: string;
+    phone?: string;
+    address?: string;
+    businessType?: Business['businessType'];
+    logoUrl?: string;
+    currencySymbol?: string;
+  }): { user: User; business: Business } {
+    const businesses = this.getBusinesses();
+    const users = this.getUsers();
+
+    const newShopIndex = businesses.length + 1;
+    const businessId = `SHOP-${String(newShopIndex).padStart(3, '0')}`;
+    const userId = `USR-${Date.now().toString(36).toUpperCase()}`;
+    const finalBusinessName = data.businessName || data.name || 'My Supermarket';
+
+    const newBusiness: Business = {
+      id: businessId,
+      name: finalBusinessName,
+      ownerName: data.ownerName,
+      ownerId: userId,
+      email: data.email,
+      phone: data.phone || '',
+      address: data.address || '',
+      businessType: data.businessType || 'Supermarket',
+      logoUrl: data.logoUrl || 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=200&auto=format&fit=crop&q=80',
+      currencySymbol: data.currencySymbol || '৳',
+      taxRate: 5.0,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      isPublicStoreEnabled: true,
+    };
+
+    const newUser: User = {
+      id: userId,
+      email: data.email,
+      name: data.ownerName,
+      role: 'business_owner',
+      businessId: businessId,
+      businessName: finalBusinessName,
+      phone: data.phone || '',
+      createdAt: new Date().toISOString(),
+      status: 'active',
+    };
+
+    businesses.push(newBusiness);
+    users.push(newUser);
+
+    setToStorage(STORAGE_KEYS.BUSINESSES, businesses);
+    setToStorage(STORAGE_KEYS.USERS, users);
+
+    this.logAudit({
+      businessId,
+      businessName: finalBusinessName,
+      userId,
+      userName: data.ownerName,
+      userRole: 'business_owner',
+      action: 'REGISTER_BUSINESS',
+      details: `New business workspace registered: ${finalBusinessName} (${businessId})`,
+    });
+
+    return { user: newUser, business: newBusiness };
+  },
+
+  updateBusiness(businessId: string, updates: Partial<Business>, user?: User): Business {
+    const businesses = this.getBusinesses();
+    const index = businesses.findIndex((b) => b.id === businessId);
+    if (index === -1) throw new Error('Business not found');
+
+    businesses[index] = { ...businesses[index], ...updates };
+    setToStorage(STORAGE_KEYS.BUSINESSES, businesses);
+
+    if (user) {
+      this.logAudit({
+        businessId,
+        businessName: businesses[index].name,
+        userId: user.id,
+        userName: user.name,
+        userRole: user.role,
+        action: 'UPDATE_BUSINESS',
+        details: `Business details updated for ${businesses[index].name}`,
+      });
+    }
+
+    return businesses[index];
+  },
+
+  updateBusinessStatus(businessId: string, status: 'active' | 'suspended', adminUser?: User): Business {
+    const businesses = this.getBusinesses();
+    const index = businesses.findIndex((b) => b.id === businessId);
+    if (index === -1) throw new Error('Business not found');
+
+    businesses[index].status = status;
+    setToStorage(STORAGE_KEYS.BUSINESSES, businesses);
+
+    // Also update owner user status
+    const users = this.getUsers();
+    const ownerIndex = users.findIndex((u) => u.businessId === businessId);
+    if (ownerIndex !== -1) {
+      users[ownerIndex].status = status;
+      setToStorage(STORAGE_KEYS.USERS, users);
+    }
+
+    if (adminUser) {
+      this.logAudit({
+        businessId,
+        businessName: businesses[index].name,
+        userId: adminUser.id,
+        userName: adminUser.name,
+        userRole: adminUser.role,
+        action: status === 'active' ? 'ACTIVATE_BUSINESS' : 'SUSPEND_BUSINESS',
+        details: `Business ${businesses[index].name} status set to ${status}`,
+      });
+    }
+
+    return businesses[index];
+  },
+
+  deleteBusiness(businessId: string, adminUser: User): void {
+    let businesses = this.getBusinesses();
+    const target = businesses.find((b) => b.id === businessId);
+    businesses = businesses.filter((b) => b.id !== businessId);
+    setToStorage(STORAGE_KEYS.BUSINESSES, businesses);
+
+    // Filter out users, products, sales, movements for this business
+    let users = this.getUsers().filter((u) => u.businessId !== businessId);
+    setToStorage(STORAGE_KEYS.USERS, users);
+
+    let products = this.getAllProductsRaw().filter((p) => p.businessId !== businessId);
+    setToStorage(STORAGE_KEYS.PRODUCTS, products);
+
+    this.logAudit({
+      businessId,
+      businessName: target?.name,
+      userId: adminUser.id,
+      userName: adminUser.name,
+      userRole: adminUser.role,
+      action: 'DELETE_BUSINESS',
+      details: `Business workspace permanently deleted: ${target?.name} (${businessId})`,
+    });
+  },
+
+  // Products (Tenant-isolated)
+  getAllProductsRaw(): Product[] {
+    return getFromStorage<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
+  },
+
+  getProducts(businessId: string): Product[] {
+    const all = this.getAllProductsRaw();
+    return all.filter((p) => p.businessId === businessId);
+  },
+
+  getPublicProducts(businessId?: string): (Product & { businessName?: string })[] {
+    const all = this.getAllProductsRaw();
+    const businesses = this.getBusinesses();
+    const businessMap = new Map<string, Business>(businesses.map((b) => [b.id, b]));
+
+    return all
+      .filter((p) => {
+        const business = businessMap.get(p.businessId);
+        if (business?.status !== 'active') return false;
+        if (!p.isPublic || p.status === 'archived') return false;
+        if (businessId && p.businessId !== businessId) return false;
+        return true;
+      })
+      .map((p) => ({
+        ...p,
+        businessName: businessMap.get(p.businessId)?.name || 'Supermarket',
+      }));
+  },
+
+  getProductById(businessId: string, productId: string): Product | undefined {
+    const products = this.getProducts(businessId);
+    return products.find((p) => p.id === productId);
+  },
+
+  addProduct(businessId: string, productData: Omit<Product, 'id' | 'businessId' | 'currentStock' | 'createdAt' | 'updatedAt' | 'totalSold'>, user: User): Product {
+    const allProducts = this.getAllProductsRaw();
+    const productId = `PROD-${Date.now().toString(36).toUpperCase()}`;
+
+    const openingStock = Number(productData.openingStock) || 0;
+    const totalReceived = Number(productData.totalReceived) || 0;
+    const stockAdjustments = Number(productData.stockAdjustments) || 0;
+    const totalSold = 0;
+    const currentStock = openingStock + totalReceived + stockAdjustments - totalSold;
+
+    const newProduct: Product = {
+      ...productData,
+      id: productId,
+      businessId,
+      openingStock,
+      totalReceived,
+      totalSold,
+      stockAdjustments,
+      currentStock,
+      purchasePrice: Number(productData.purchasePrice) || 0,
+      sellingPrice: Number(productData.sellingPrice) || 0,
+      minStockLevel: Number(productData.minStockLevel) || 0,
+      maxStockLevel: Number(productData.maxStockLevel) || 100,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    allProducts.push(newProduct);
+    setToStorage(STORAGE_KEYS.PRODUCTS, allProducts);
+
+    // If opening stock > 0, log initial movement
+    if (openingStock > 0) {
+      this.logMovement({
+        businessId,
+        productId: newProduct.id,
+        productName: newProduct.name,
+        sku: newProduct.sku,
+        type: 'OPENING',
+        quantity: openingStock,
+        previousStock: 0,
+        newStock: openingStock,
+        unitCost: newProduct.purchasePrice,
+        referenceId: `OPEN-${productId}`,
+        notes: 'Initial opening stock upon product creation',
+        performedBy: user.name,
+      });
+    }
+
+    this.logAudit({
+      businessId,
+      userId: user.id,
+      userName: user.name,
+      userRole: user.role,
+      action: 'ADD_PRODUCT',
+      details: `Added new product: ${newProduct.name} (SKU: ${newProduct.sku})`,
+    });
+
+    return newProduct;
+  },
+
+  updateProduct(businessId: string, productId: string, updates: Partial<Product>, user: User): Product {
+    const allProducts = this.getAllProductsRaw();
+    const index = allProducts.findIndex((p) => p.id === productId && (p.businessId === businessId || user.role === 'super_admin'));
+    if (index === -1) throw new Error('Product not found or access denied');
+
+    const prev = allProducts[index];
+    const openingStock = updates.openingStock !== undefined ? Number(updates.openingStock) : prev.openingStock;
+    const totalReceived = updates.totalReceived !== undefined ? Number(updates.totalReceived) : prev.totalReceived;
+    const totalSold = updates.totalSold !== undefined ? Number(updates.totalSold) : prev.totalSold;
+    const stockAdjustments = updates.stockAdjustments !== undefined ? Number(updates.stockAdjustments) : prev.stockAdjustments;
+
+    // Strict formula: Current Stock = Opening Stock + Total Received + Stock Adjustments - Total Sold
+    const currentStock = openingStock + totalReceived + stockAdjustments - totalSold;
+
+    allProducts[index] = {
+      ...prev,
+      ...updates,
+      openingStock,
+      totalReceived,
+      totalSold,
+      stockAdjustments,
+      currentStock,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setToStorage(STORAGE_KEYS.PRODUCTS, allProducts);
+
+    this.logAudit({
+      businessId: prev.businessId,
+      userId: user.id,
+      userName: user.name,
+      userRole: user.role,
+      action: 'UPDATE_PRODUCT',
+      details: `Updated product details for ${prev.name} (ID: ${productId})`,
+    });
+
+    return allProducts[index];
+  },
+
+  deleteProduct(businessId: string, productId: string, user: User): void {
+    let allProducts = this.getAllProductsRaw();
+    const target = allProducts.find((p) => p.id === productId && (p.businessId === businessId || user.role === 'super_admin'));
+    if (!target) throw new Error('Product not found');
+
+    allProducts = allProducts.filter((p) => p.id !== productId);
+    setToStorage(STORAGE_KEYS.PRODUCTS, allProducts);
+
+    this.logAudit({
+      businessId: target.businessId,
+      userId: user.id,
+      userName: user.name,
+      userRole: user.role,
+      action: 'DELETE_PRODUCT',
+      details: `Deleted product ${target.name} (SKU: ${target.sku})`,
+    });
+  },
+
+  archiveProduct(businessId: string, productId: string, user: User): Product {
+    return this.updateProduct(businessId, productId, { status: 'archived' }, user);
+  },
+
+  restoreProduct(businessId: string, productId: string, user: User): Product {
+    return this.updateProduct(businessId, productId, { status: 'active' }, user);
+  },
+
+  // Stock Operations: Receiving / Inward Load
+  receiveStock(
+    businessId: string,
+    data: {
+      productId: string;
+      quantity: number;
+      supplierName: string;
+      invoiceNumber: string;
+      unitCost?: number;
+      notes?: string;
+    },
+    user: User
+  ): { product: Product; movement: InventoryMovement } {
+    const product = this.getProductById(businessId, data.productId);
+    if (!product) throw new Error('Product not found');
+
+    const quantity = Number(data.quantity);
+    if (quantity <= 0) throw new Error('Stock receiving quantity must be greater than 0');
+
+    const previousStock = product.currentStock;
+    const newTotalReceived = product.totalReceived + quantity;
+    const newStock = product.openingStock + newTotalReceived + product.stockAdjustments - product.totalSold;
+
+    const updatedProduct = this.updateProduct(
+      businessId,
+      product.id,
+      {
+        totalReceived: newTotalReceived,
+        supplier: data.supplierName || product.supplier,
+        purchasePrice: data.unitCost !== undefined && data.unitCost > 0 ? data.unitCost : product.purchasePrice,
+      },
+      user
+    );
+
+    const movement = this.logMovement({
+      businessId,
+      productId: product.id,
+      productName: product.name,
+      sku: product.sku,
+      type: 'RECEIVING',
+      quantity,
+      previousStock,
+      newStock,
+      unitCost: data.unitCost || product.purchasePrice,
+      referenceId: data.invoiceNumber || `REC-${Date.now().toString(36).toUpperCase()}`,
+      notes: data.notes || `Stock received from ${data.supplierName || 'supplier'}`,
+      performedBy: user.name,
+    });
+
+    this.logAudit({
+      businessId,
+      userId: user.id,
+      userName: user.name,
+      userRole: user.role,
+      action: 'RECEIVE_STOCK',
+      details: `Received +${quantity} units for ${product.name}. Stock changed from ${previousStock} to ${newStock}`,
+    });
+
+    return { product: updatedProduct, movement };
+  },
+
+  // Stock Adjustment (Manual loss, damage, count correction)
+  adjustStock(
+    businessId: string,
+    data: {
+      productId: string;
+      deltaQuantity: number; // positive or negative
+      reason: string;
+    },
+    user: User
+  ): { product: Product; movement: InventoryMovement } {
+    const product = this.getProductById(businessId, data.productId);
+    if (!product) throw new Error('Product not found');
+
+    const delta = Number(data.deltaQuantity);
+    if (delta === 0) throw new Error('Adjustment quantity cannot be 0');
+
+    const previousStock = product.currentStock;
+    const targetStock = previousStock + delta;
+    if (targetStock < 0) throw new Error('Stock adjustment would result in negative inventory');
+
+    const newAdjustments = product.stockAdjustments + delta;
+    const updatedProduct = this.updateProduct(
+      businessId,
+      product.id,
+      {
+        stockAdjustments: newAdjustments,
+      },
+      user
+    );
+
+    const movement = this.logMovement({
+      businessId,
+      productId: product.id,
+      productName: product.name,
+      sku: product.sku,
+      type: delta > 0 ? 'ADJUSTMENT_ADD' : 'ADJUSTMENT_SUB',
+      quantity: Math.abs(delta),
+      previousStock,
+      newStock: targetStock,
+      referenceId: `ADJ-${Date.now().toString(36).toUpperCase()}`,
+      notes: data.reason || 'Inventory count adjustment',
+      performedBy: user.name,
+    });
+
+    this.logAudit({
+      businessId,
+      userId: user.id,
+      userName: user.name,
+      userRole: user.role,
+      action: 'ADJUST_STOCK',
+      details: `Adjusted stock by ${delta > 0 ? '+' : ''}${delta} for ${product.name} (Reason: ${data.reason})`,
+    });
+
+    return { product: updatedProduct, movement };
+  },
+
+  // Sales & POS Execution
+  processSale(
+    businessId: string,
+    saleData: {
+      items: { productId: string; quantity: number }[];
+      customerName?: string;
+      customerPhone?: string;
+      discount?: number;
+      paymentMethod: Sale['paymentMethod'];
+      receivedAmount?: number;
+      notes?: string;
+    },
+    user: User
+  ): Sale {
+    const business = this.getBusinessById(businessId);
+    if (!business) throw new Error('Business not found');
+
+    const allProducts = this.getProducts(businessId);
+    const saleItems: Sale['items'] = [];
+    let subtotal = 0;
+
+    // Validate availability for all items first (Never allow selling more than available stock)
+    for (const item of saleData.items) {
+      const prod = allProducts.find((p) => p.id === item.productId);
+      if (!prod) throw new Error(`Product ID ${item.productId} not found`);
+      if (prod.currentStock < item.quantity) {
+        throw new Error(`Insufficient stock for "${prod.name}". Available: ${prod.currentStock}, Requested: ${item.quantity}`);
+      }
+    }
+
+    const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
+    const saleId = `SALE-${Date.now().toString(36).toUpperCase()}`;
+
+    // Execute decrements & assemble sale items
+    for (const item of saleData.items) {
+      const prod = allProducts.find((p) => p.id === item.productId)!;
+      const lineSubtotal = prod.sellingPrice * item.quantity;
+      subtotal += lineSubtotal;
+
+      saleItems.push({
+        productId: prod.id,
+        productName: prod.name,
+        sku: prod.sku,
+        barcode: prod.barcode,
+        unitPrice: prod.sellingPrice,
+        costPrice: prod.purchasePrice,
+        quantity: item.quantity,
+        subtotal: lineSubtotal,
+        unit: prod.unit,
+      });
+
+      const previousStock = prod.currentStock;
+      const newTotalSold = prod.totalSold + item.quantity;
+      const newStock = prod.openingStock + prod.totalReceived + prod.stockAdjustments - newTotalSold;
+
+      // Update product totalSold
+      this.updateProduct(
+        businessId,
+        prod.id,
+        {
+          totalSold: newTotalSold,
+        },
+        user
+      );
+
+      // Log movement for this product
+      this.logMovement({
+        businessId,
+        productId: prod.id,
+        productName: prod.name,
+        sku: prod.sku,
+        type: 'SALE',
+        quantity: item.quantity,
+        previousStock,
+        newStock,
+        referenceId: invoiceNumber,
+        unitCost: prod.purchasePrice,
+        notes: `Sold via POS (Invoice #${invoiceNumber})`,
+        performedBy: user.name,
+      });
+    }
+
+    const discount = Number(saleData.discount) || 0;
+    const taxRate = business.taxRate || 0;
+    const taxableAmount = Math.max(0, subtotal - discount);
+    const tax = Math.round(((taxableAmount * taxRate) / 100) * 100) / 100;
+    const totalAmount = Math.round((taxableAmount + tax) * 100) / 100;
+
+    const receivedAmount = saleData.receivedAmount !== undefined ? Number(saleData.receivedAmount) : totalAmount;
+    const changeAmount = Math.max(0, Math.round((receivedAmount - totalAmount) * 100) / 100);
+
+    const newSale: Sale = {
+      id: saleId,
+      businessId,
+      invoiceNumber,
+      customerName: saleData.customerName || 'Walk-in Customer',
+      customerPhone: saleData.customerPhone || '',
+      items: saleItems,
+      subtotal: Math.round(subtotal * 100) / 100,
+      discount,
+      tax,
+      totalAmount,
+      paymentMethod: saleData.paymentMethod,
+      paymentStatus: 'paid',
+      receivedAmount,
+      changeAmount,
+      notes: saleData.notes,
+      createdAt: new Date().toISOString(),
+      cashierName: user.name,
+    };
+
+    const allSales = getFromStorage<Sale[]>(STORAGE_KEYS.SALES, INITIAL_SALES);
+    allSales.unshift(newSale);
+    setToStorage(STORAGE_KEYS.SALES, allSales);
+
+    this.logAudit({
+      businessId,
+      userId: user.id,
+      userName: user.name,
+      userRole: user.role,
+      action: 'PROCESS_SALE',
+      details: `Completed sale #${invoiceNumber} for ${saleItems.length} items. Total: $${totalAmount.toFixed(2)}`,
+    });
+
+    return newSale;
+  },
+
+  getSales(businessId: string): Sale[] {
+    const allSales = getFromStorage<Sale[]>(STORAGE_KEYS.SALES, INITIAL_SALES);
+    return allSales.filter((s) => s.businessId === businessId);
+  },
+
+  getAllPlatformSales(): Sale[] {
+    return getFromStorage<Sale[]>(STORAGE_KEYS.SALES, INITIAL_SALES);
+  },
+
+  // Movements & History
+  getMovements(businessId: string, productId?: string): InventoryMovement[] {
+    const all = getFromStorage<InventoryMovement[]>(STORAGE_KEYS.MOVEMENTS, INITIAL_MOVEMENTS);
+    return all
+      .filter((m) => m.businessId === businessId && (!productId || m.productId === productId))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  logMovement(data: Omit<InventoryMovement, 'id' | 'createdAt'>): InventoryMovement {
+    const all = getFromStorage<InventoryMovement[]>(STORAGE_KEYS.MOVEMENTS, INITIAL_MOVEMENTS);
+    const newMovement: InventoryMovement = {
+      ...data,
+      id: `MOV-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1000)}`,
+      createdAt: new Date().toISOString(),
+    };
+    all.unshift(newMovement);
+    setToStorage(STORAGE_KEYS.MOVEMENTS, all);
+    return newMovement;
+  },
+
+  // Suppliers (Tenant-isolated)
+  getSuppliers(businessId: string): Supplier[] {
+    const all = getFromStorage<Supplier[]>(STORAGE_KEYS.SUPPLIERS, INITIAL_SUPPLIERS);
+    return all.filter((s) => s.businessId === businessId);
+  },
+
+  addSupplier(
+    businessId: string,
+    data: {
+      name: string;
+      contactPerson?: string;
+      email?: string;
+      phone?: string;
+      address?: string;
+      suppliedCategories?: string[];
+      notes?: string;
+    },
+    user?: User
+  ): Supplier {
+    const all = getFromStorage<Supplier[]>(STORAGE_KEYS.SUPPLIERS, INITIAL_SUPPLIERS);
+    const newSupplier: Supplier = {
+      id: `SUP-${Date.now().toString(36).toUpperCase()}`,
+      businessId,
+      name: data.name,
+      contactPerson: data.contactPerson || '',
+      email: data.email || '',
+      phone: data.phone || '',
+      address: data.address || '',
+      suppliedCategories: data.suppliedCategories || [],
+      notes: data.notes || '',
+      status: 'active',
+      createdAt: new Date().toISOString(),
+    };
+    all.push(newSupplier);
+    setToStorage(STORAGE_KEYS.SUPPLIERS, all);
+
+    if (user) {
+      this.logAudit({
+        businessId,
+        userId: user.id,
+        userName: user.name,
+        userRole: user.role,
+        action: 'ADD_SUPPLIER',
+        details: `Added new supplier: ${newSupplier.name}`,
+      });
+    }
+
+    return newSupplier;
+  },
+
+  updateSupplier(
+    businessId: string,
+    supplierId: string,
+    updates: Partial<Supplier>,
+    user?: User
+  ): Supplier {
+    const all = getFromStorage<Supplier[]>(STORAGE_KEYS.SUPPLIERS, INITIAL_SUPPLIERS);
+    const index = all.findIndex((s) => s.id === supplierId && s.businessId === businessId);
+    if (index === -1) throw new Error('Supplier not found');
+
+    all[index] = { ...all[index], ...updates };
+    setToStorage(STORAGE_KEYS.SUPPLIERS, all);
+
+    if (user) {
+      this.logAudit({
+        businessId,
+        userId: user.id,
+        userName: user.name,
+        userRole: user.role,
+        action: 'UPDATE_SUPPLIER',
+        details: `Updated supplier: ${all[index].name}`,
+      });
+    }
+
+    return all[index];
+  },
+
+  deleteSupplier(businessId: string, supplierId: string, user?: User): void {
+    let all = getFromStorage<Supplier[]>(STORAGE_KEYS.SUPPLIERS, INITIAL_SUPPLIERS);
+    all = all.filter((s) => s.id !== supplierId || s.businessId !== businessId);
+    setToStorage(STORAGE_KEYS.SUPPLIERS, all);
+  },
+
+  // Audit Logs
+  getAuditLogs(businessId?: string | null): AuditLog[] {
+    const all = getFromStorage<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
+    if (!businessId) {
+      return all.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    }
+    return all
+      .filter((l) => l.businessId === businessId)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  },
+
+  logAudit(data: Omit<AuditLog, 'id' | 'timestamp'>): void {
+    const all = getFromStorage<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
+    const newLog: AuditLog = {
+      ...data,
+      id: `LOG-${Date.now().toString(36).toUpperCase()}`,
+      timestamp: new Date().toISOString(),
+    };
+    all.unshift(newLog);
+    if (all.length > 500) all.pop(); // Keep manageable size
+    setToStorage(STORAGE_KEYS.AUDIT_LOGS, all);
+  },
+
+  getPlatformStats() {
+    const stats = this.getSuperAdminStats();
+    return {
+      totalBusinesses: stats.totalBusinesses,
+      totalProducts: stats.totalProducts,
+      totalSalesCount: stats.totalTransactions,
+      totalRevenue: stats.totalSalesRevenue,
+      activeBusinesses: stats.activeBusinesses,
+      suspendedBusinesses: stats.suspendedBusinesses,
+    };
+  },
+
+  // Super Admin Platform Metrics
+  getSuperAdminStats() {
+    const businesses = this.getBusinesses();
+    const users = this.getUsers().filter((u) => u.role === 'business_owner');
+    const products = this.getAllProductsRaw();
+    const sales = this.getAllPlatformSales();
+
+    const totalStockUnits = products.reduce((acc, p) => acc + (p.currentStock > 0 ? p.currentStock : 0), 0);
+    const totalPlatformSalesRevenue = sales.reduce((acc, s) => acc + s.totalAmount, 0);
+    const activeBusinesses = businesses.filter((b) => b.status === 'active').length;
+    const suspendedBusinesses = businesses.filter((b) => b.status === 'suspended').length;
+
+    return {
+      totalBusinesses: businesses.length,
+      totalBusinessOwners: users.length,
+      totalProducts: products.length,
+      totalStockUnits,
+      totalSalesRevenue: totalPlatformSalesRevenue,
+      totalTransactions: sales.length,
+      activeBusinesses,
+      suspendedBusinesses,
+      newRegistrationsCount: businesses.filter((b) => {
+        const d = new Date(b.createdAt);
+        const now = new Date();
+        const diffDays = (now.getTime() - d.getTime()) / (1000 * 3600 * 24);
+        return diffDays <= 30;
+      }).length,
+    };
+  },
+
+  // Helper categories
+  getCategories(): string[] {
+    return [
+      'Dairy & Eggs',
+      'Fresh Produce',
+      'Bakery',
+      'Beverages',
+      'Pantry & Grains',
+      'Snacks & Confectionery',
+      'Meat & Poultry',
+      'Frozen Foods',
+      'Household Essentials',
+      'Personal Care & Health',
+      'Baby & Child Care',
+      'Pet Supplies',
+    ];
+  },
+
+  // Support Settings & Tickets
+  getSupportSettings(): SupportSettings {
+    const raw = localStorage.getItem(STORAGE_KEYS.SUPPORT_SETTINGS);
+    if (!raw) {
+      localStorage.setItem(STORAGE_KEYS.SUPPORT_SETTINGS, JSON.stringify(DEFAULT_SUPPORT_SETTINGS));
+      return DEFAULT_SUPPORT_SETTINGS;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      // If parsed contains legacy default placeholder values, update to new defaults
+      if (parsed.whatsappNumber === '+8801700000000' || parsed.supportEmail === 'support.spm@gmail.com') {
+        const migrated = { ...DEFAULT_SUPPORT_SETTINGS, ...parsed, whatsappNumber: '+8801859340742', supportPhone: '+880 1859-340742', facebookMessengerUrl: 'https://www.facebook.com/nazim.hossaim.413123', supportEmail: 'imranmahmud1122.test@gmail.com' };
+        localStorage.setItem(STORAGE_KEYS.SUPPORT_SETTINGS, JSON.stringify(migrated));
+        return migrated;
+      }
+      return parsed;
+    } catch {
+      return DEFAULT_SUPPORT_SETTINGS;
+    }
+  },
+
+  updateSupportSettings(settings: Partial<SupportSettings>): SupportSettings {
+    const current = this.getSupportSettings();
+    const updated = { ...current, ...settings };
+    localStorage.setItem(STORAGE_KEYS.SUPPORT_SETTINGS, JSON.stringify(updated));
+    this.addAuditLog('SUPPORT_SETTINGS_UPDATED', 'Updated support contact configuration');
+    return updated;
+  },
+
+  getSupportTickets(): SupportTicket[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.SUPPORT_TICKETS);
+    if (!raw) {
+      localStorage.setItem(STORAGE_KEYS.SUPPORT_TICKETS, JSON.stringify(INITIAL_SUPPORT_TICKETS));
+      return INITIAL_SUPPORT_TICKETS;
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return INITIAL_SUPPORT_TICKETS;
+    }
+  },
+
+  createSupportTicket(ticketData: Omit<SupportTicket, 'id' | 'createdAt' | 'status'>): SupportTicket {
+    const tickets = this.getSupportTickets();
+    const newId = `TICKET-${1000 + tickets.length + 1}`;
+    const newTicket: SupportTicket = {
+      ...ticketData,
+      id: newId,
+      status: 'open',
+      createdAt: new Date().toISOString(),
+    };
+    const updated = [newTicket, ...tickets];
+    localStorage.setItem(STORAGE_KEYS.SUPPORT_TICKETS, JSON.stringify(updated));
+    this.addAuditLog('SUPPORT_TICKET_SUBMITTED', `New support ticket ${newId} submitted by ${newTicket.email} (${newTicket.category})`);
+    return newTicket;
+  },
+
+  updateSupportTicketStatus(id: string, status: 'open' | 'in_progress' | 'resolved'): SupportTicket | null {
+    const tickets = this.getSupportTickets();
+    const idx = tickets.findIndex((t) => t.id === id);
+    if (idx === -1) return null;
+    tickets[idx].status = status;
+    localStorage.setItem(STORAGE_KEYS.SUPPORT_TICKETS, JSON.stringify(tickets));
+    this.addAuditLog('SUPPORT_TICKET_STATUS_CHANGED', `Ticket ${id} status changed to ${status}`);
+    return tickets[idx];
+  },
+};

@@ -1,0 +1,231 @@
+@import "tailwindcss";
+
+/* Comprehensive print optimization styles */
+@media print {
+  @page {
+    margin: 0;
+    size: auto;
+  }
+
+  /* Global print defaults */
+  *,
+  *::before,
+  *::after {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-size: 10pt !important;
+    line-height: 1.4 !important;
+    margin: 0 !important;
+    padding: 8mm !important;
+    width: 100% !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide interactive & non-printable elements */
+  .no-print,
+  nav,
+  header,
+  aside,
+  footer,
+  button,
+  .btn,
+  input,
+  select,
+  textarea {
+    display: none !important;
+  }
+
+  /* ========================================================= */
+  /* POS THERMAL RECEIPT (80mm) PRINT RULES                    */
+  /* ========================================================= */
+  body:has(#printable-receipt),
+  body.printing-receipt {
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    width: 100% !important;
+  }
+
+  /* Hide host UI elements when printing receipt */
+  body:has(#printable-receipt) *,
+  body.printing-receipt * {
+    visibility: hidden;
+  }
+
+  /* Reset modal backdrop and card wrappers so they never clip, darken, or scale the receipt */
+  #receipt-modal-backdrop,
+  #receipt-modal-card,
+  body:has(#printable-receipt) #receipt-modal-backdrop,
+  body:has(#printable-receipt) #receipt-modal-card,
+  body.printing-receipt #receipt-modal-backdrop,
+  body.printing-receipt #receipt-modal-card {
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    animation: none !important;
+    visibility: visible !important;
+  }
+
+  /* Ensure receipt content and all its child elements are fully visible */
+  #printable-receipt,
+  #printable-receipt *,
+  body:has(#printable-receipt) #printable-receipt,
+  body:has(#printable-receipt) #printable-receipt *,
+  body.printing-receipt #printable-receipt,
+  body.printing-receipt #printable-receipt * {
+    visibility: visible !important;
+  }
+
+  /* Thermal Receipt Container: Correctly centered and scaled for 80mm width */
+  #printable-receipt {
+    display: block !important;
+    position: relative !important;
+    margin: 0 auto !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    padding: 3mm 4mm !important;
+    box-sizing: border-box !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: 'Courier New', Courier, monospace !important;
+    font-size: 11px !important;
+    line-height: 1.35 !important;
+    border: none !important;
+    box-shadow: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Sharp contrast for thermal print heads: black text and dark borders */
+  #printable-receipt * {
+    color: #000000 !important;
+    border-color: #000000 !important;
+  }
+
+  #printable-receipt h3 {
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    text-align: center !important;
+    margin: 0 0 2px 0 !important;
+  }
+
+  #printable-receipt p {
+    margin: 1px 0 !important;
+    font-size: 10px !important;
+  }
+
+  #printable-receipt .border-dashed {
+    border-style: dashed !important;
+    border-color: #000000 !important;
+  }
+
+  /* Preserve item price & summary alignments */
+  #printable-receipt .flex {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: baseline !important;
+  }
+
+  /* ========================================================= */
+  /* STANDARD REPORT TABLES & PAGINATION OPTIMIZATIONS         */
+  /* ========================================================= */
+  /* Prevent table containers from clipping content horizontally */
+  .overflow-x-auto,
+  .overflow-y-auto,
+  .overflow-hidden,
+  .overflow-auto,
+  [class*="overflow"] {
+    overflow: visible !important;
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  /* Full width and clean border collapse for standard report tables */
+  table {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: auto !important;
+    margin-top: 8px !important;
+    margin-bottom: 16px !important;
+    page-break-inside: auto;
+  }
+
+  /* Repeat table headers at top of each printed page */
+  thead {
+    display: table-header-group !important;
+  }
+
+  tfoot {
+    display: table-footer-group !important;
+  }
+
+  /* Prevent row and cell splitting across page boundaries */
+  tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  th,
+  td {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    padding: 6px 8px !important;
+    word-break: break-word !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+  }
+
+  th {
+    background-color: #f8fafc !important;
+    color: #0f172a !important;
+    font-weight: 700 !important;
+  }
+
+  /* Prevent headings from being orphaned at the bottom of a page */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    color: #0f172a !important;
+  }
+
+  /* Prevent summary cards and charts from awkward mid-block page breaks */
+  .grid,
+  .grid > div,
+  [class*="rounded-2xl"],
+  [class*="rounded-xl"] {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  img,
+  svg,
+  canvas {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    max-width: 100% !important;
+  }
+}
+
