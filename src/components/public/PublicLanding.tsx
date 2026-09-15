@@ -31,7 +31,8 @@ import {
   Minus,
   SlidersHorizontal,
   CreditCard,
-  MapPin
+  MapPin,
+  FileText
 } from 'lucide-react';
 import { db } from '../../services/storage';
 import { Product, Business, CartItem, Order } from '../../types';
@@ -144,10 +145,10 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
     if (inStockOnly && p.currentStock <= 0) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const matchName = p.name.toLowerCase().includes(q);
-      const matchBrand = p.brand.toLowerCase().includes(q);
-      const matchSku = p.sku.toLowerCase().includes(q);
-      const matchCat = p.category.toLowerCase().includes(q);
+      const matchName = (p.name || '').toLowerCase().includes(q);
+      const matchBrand = (p.brand || '').toLowerCase().includes(q);
+      const matchSku = (p.sku || '').toLowerCase().includes(q);
+      const matchCat = (p.category || '').toLowerCase().includes(q);
       const matchStore = (p.businessName || '').toLowerCase().includes(q);
       if (!matchName && !matchBrand && !matchSku && !matchCat && !matchStore) return false;
     }
@@ -650,9 +651,9 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
 
       {/* Public Inspect Product Modal */}
       {inspectProduct && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-xl w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 my-8">
-            <div className="relative h-64 bg-slate-100">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-200 my-auto">
+            <div className="relative w-full h-64 sm:h-72 bg-slate-100 shrink-0">
               {inspectProduct.imageUrl ? (
                 <img
                   src={inspectProduct.imageUrl}
@@ -667,13 +668,13 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
               )}
               <button
                 onClick={() => setInspectProduct(null)}
-                className="absolute top-3 right-3 w-8 h-8 rounded-full bg-slate-900/70 text-white flex items-center justify-center hover:bg-slate-900 transition-colors"
+                className="absolute top-3 right-3 w-8 h-8 rounded-full bg-slate-900/70 text-white flex items-center justify-center hover:bg-slate-900 transition-colors z-10"
               >
                 ✕
               </button>
             </div>
 
-            <div className="p-6 space-y-5">
+            <div className="p-5 sm:p-6 space-y-5">
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
@@ -685,8 +686,19 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
                   </span>
                 </div>
 
-                <h2 className="text-xl font-extrabold text-slate-900 mb-1">{inspectProduct.name}</h2>
-                <p className="text-xs text-slate-600 leading-relaxed">{inspectProduct.description}</p>
+                <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 mb-2">{inspectProduct.name}</h2>
+                
+                {inspectProduct.description && inspectProduct.description.trim().length > 0 && (
+                  <div className="mt-3 p-4 sm:p-4.5 bg-slate-50/90 border border-slate-200/90 rounded-2xl">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      Product Details & Description
+                    </div>
+                    <div className="text-sm sm:text-[15px] text-slate-800 leading-relaxed whitespace-pre-wrap break-words">
+                      {inspectProduct.description}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs">

@@ -1292,7 +1292,7 @@ export const db = {
     return all
       .filter((p) => {
         const business = businessMap.get(p.businessId);
-        if (business?.status !== 'active') return false;
+        if (business && business.status === 'suspended') return false;
         if (!p.isPublic || p.status === 'archived') return false;
         if (businessId && p.businessId !== businessId) return false;
         return true;

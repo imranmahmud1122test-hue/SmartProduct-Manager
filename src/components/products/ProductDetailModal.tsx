@@ -15,7 +15,8 @@ import {
   Building2,
   CheckCircle2,
   Tag,
-  Share2
+  Share2,
+  FileText
 } from 'lucide-react';
 import { Product, Business } from '../../types';
 import { formatCurrency, formatDate, formatShortDate, generateQRCodeDataUrl, renderBarcodeToCanvas, computeProductStockAnalysis } from '../../utils/codeGenerators';
@@ -153,6 +154,19 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Product Description Section */}
+          {product.description && product.description.trim().length > 0 && (
+            <div className="p-4 sm:p-5 bg-slate-50 border border-slate-200 rounded-2xl">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                Product Description
+              </div>
+              <div className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap break-words">
+                {product.description}
+              </div>
+            </div>
+          )}
 
           {/* Core Stock Equation Box */}
           <div className="p-5 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-2xl shadow-md border border-slate-700">
