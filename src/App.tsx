@@ -62,13 +62,28 @@ export default function App() {
     const refreshSession = () => {
       const user = db.getCurrentUser();
       if (user) {
-        setCurrentUser(user);
+        setCurrentUser((prev) => {
+          if (
+            !prev ||
+            prev.id !== user.id ||
+            prev.email !== user.email ||
+            prev.role !== user.role ||
+            prev.businessId !== user.businessId
+          ) {
+            return user;
+          }
+          return prev;
+        });
         if (user.businessId) {
           const biz = db.getBusinessById(user.businessId);
-          setCurrentBusiness(biz || null);
+          setCurrentBusiness((prev) => {
+            if (!prev || prev.id !== biz?.id || prev.name !== biz?.name) {
+              return biz || null;
+            }
+            return prev;
+          });
         }
       }
-      setDataVersion((v) => v + 1);
     };
 
     refreshSession();
@@ -137,14 +152,6 @@ export default function App() {
         <PublicLanding
           onOpenLogin={() => setIsLoginOpen(true)}
           onOpenRegister={() => setIsRegisterOpen(true)}
-          onQuickLogin={(role) => {
-            let targetEmail = 'owner@metro.com';
-            if (role === 'valley_owner') targetEmail = 'owner@freshvalley.com';
-            const user = db.findUserByEmail(targetEmail);
-            if (user) {
-              handleLoginSuccess(user);
-            }
-          }}
           currentUser={currentUser}
           onReturnToDashboard={currentUser ? () => setIsViewingPublicMode(false) : undefined}
         />
@@ -262,8 +269,9 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'orders' && currentBusiness && (
+        {activeTab === 'orders' && (
           <OwnerOrdersView
+            businessId={businessId}
             business={currentBusiness}
             currentUser={currentUser}
           />

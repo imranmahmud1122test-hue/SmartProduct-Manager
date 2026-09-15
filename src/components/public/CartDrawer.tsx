@@ -39,9 +39,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 }) => {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
-  const [customerEmail, setCustomerEmail] = useState('');
+  const [zilla, setZilla] = useState('');
+  const [thana, setThana] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
-  const [customerNote, setCustomerNote] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash_on_delivery' | 'mobile_banking' | 'card'>('cash_on_delivery');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -89,6 +89,14 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
       setErrorMessage('Please enter a valid phone number');
       return;
     }
+    if (!zilla.trim()) {
+      setErrorMessage('Please enter your Zilla / District (জেলা)');
+      return;
+    }
+    if (!thana.trim()) {
+      setErrorMessage('Please enter your Thana / Upazila (থানা)');
+      return;
+    }
     if (!deliveryAddress.trim()) {
       setErrorMessage('Please enter your full delivery address');
       return;
@@ -99,9 +107,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
       const result = db.createOrder({
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim(),
-        customerEmail: customerEmail.trim() || undefined,
-        deliveryAddress: deliveryAddress.trim(),
-        customerNote: customerNote.trim() || undefined,
+        zilla: zilla.trim(),
+        thana: thana.trim(),
+        deliveryAddress: `${deliveryAddress.trim()}, Thana: ${thana.trim()}, District: ${zilla.trim()}`,
         paymentMethod,
         items: cartItems.map((ci) => ({
           productId: ci.product.id,
@@ -294,43 +302,47 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Email Address (Optional)
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="e.g. customer@example.com"
-                    value={customerEmail}
-                    onChange={(e) => setCustomerEmail(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Zilla / District (জেলা) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Dhaka (ঢাকা)"
+                      value={zilla}
+                      onChange={(e) => setZilla(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Thana / Upazila (থানা) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Banani / Mirpur"
+                      value={thana}
+                      onChange={(e) => setThana(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Delivery Address <span className="text-rose-500">*</span>
+                    Full Delivery Address <span className="text-rose-500">*</span>
                   </label>
                   <textarea
                     required
                     rows={2}
-                    placeholder="House, Road, Block, City (e.g. Banani, Dhaka)"
+                    placeholder="House, Road, Area (e.g. House 14, Road 5, Block B)"
                     value={deliveryAddress}
                     onChange={(e) => setDeliveryAddress(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Special Delivery Notes (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Ring bell or leave at security desk"
-                    value={customerNote}
-                    onChange={(e) => setCustomerNote(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
 

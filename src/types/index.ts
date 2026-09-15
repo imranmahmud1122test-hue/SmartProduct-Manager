@@ -36,6 +36,7 @@ export interface Product {
   id: string;
   businessId: string; // Tenant isolation key (storeId)
   ownerId?: string; // Explicit owner user ID
+  businessName?: string; // Store / Supermarket name
   name: string;
   description: string;
   category: string;
@@ -111,6 +112,8 @@ export interface Order {
   customerPhone: string;
   customerEmail?: string;
   deliveryAddress: string;
+  zilla?: string;
+  thana?: string;
   customerNote?: string;
   items: OrderItem[];
   // Snapshot primary fields for simple querying and historical consistency

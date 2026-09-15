@@ -19,6 +19,7 @@ import {
 import { db } from '../../services/storage';
 import { Product, User } from '../../types';
 import { generateQRCodeDataUrl } from '../../utils/codeGenerators';
+import { compressFile, compressImageDataUrl } from '../../utils/imageCompressor';
 
 interface AddEditProductModalProps {
   isOpen: boolean;
@@ -59,6 +60,7 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
   const [imageUrl, setImageUrl] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isPublic, setIsPublic] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
@@ -69,6 +71,8 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
   const currency = business?.currencySymbol || '৳';
 
   useEffect(() => {
+    if (!isOpen) return;
+
     if (productToEdit) {
       setName(productToEdit.name);
       setDescription(productToEdit.description || '');
@@ -88,7 +92,7 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
       setNotes(productToEdit.notes || '');
       setImageUrl(productToEdit.imageUrl || '');
       setImagePreview(productToEdit.imageUrl || null);
-      setIsPublic(productToEdit.isPublic ?? true);
+      setIsPublic(productToEdit.isPublished ?? productToEdit.isPublic ?? true);
     } else {
       // Clean state for fresh creation - strictly 0 prices and quantities
       setName('');
@@ -113,8 +117,9 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
       setImagePreview(null);
       setIsPublic(true);
     }
+    setIsSaving(false);
     setError(null);
-  }, [productToEdit, isOpen, businessId]);
+  }, [productToEdit?.id, isOpen, businessId]);
 
   // Update QR Code preview whenever SKU or Barcode changes
   useEffect(() => {
@@ -131,7 +136,7 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       // Validate format
@@ -140,18 +145,24 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
         setError('Supported image types: JPG, JPEG, PNG, WEBP.');
         return;
       }
-      if (file.size > 5 * 1024 * 1024) {
-        setError('Image file must be less than 5MB.');
+      if (file.size > 10 * 1024 * 1024) {
+        setError('Image file must be less than 10MB.');
         return;
       }
 
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
-        setImagePreview(base64);
-        setImageUrl(base64);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressedBase64 = await compressFile(file, 800, 800, 0.75);
+        setImagePreview(compressedBase64);
+        setImageUrl(compressedBase64);
+      } catch (err) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = reader.result as string;
+          setImagePreview(base64);
+          setImageUrl(base64);
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 
@@ -172,7 +183,7 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
     setSku(newSku);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -192,8 +203,14 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
     }
 
     try {
+      setIsSaving(true);
+      const ownerId = currentUser?.id || (currentUser as any)?.uid || business?.ownerId || '';
+      const resolvedBusinessName = business?.name || currentUser.businessName || productToEdit?.businessName || 'Supermarket Store';
+      const isPublished = Boolean(isPublic);
+      const finalImageUrl = imageUrl ? await compressImageDataUrl(imageUrl, 800, 800, 0.75) : '';
+
       if (isEditing && productToEdit) {
-        const updated = db.updateProduct(
+        const updated = await db.updateProduct(
           businessId,
           productToEdit.id,
           {
@@ -212,14 +229,19 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
             expiryDate,
             unit,
             notes: notes.trim(),
-            imageUrl,
-            isPublic,
+            imageUrl: finalImageUrl,
+            isPublic: isPublished,
+            isPublished: isPublished,
+            ownerId,
+            businessName: resolvedBusinessName,
           },
           currentUser
         );
+        window.dispatchEvent(new CustomEvent('spm_storage_update', { detail: { key: 'ssm_products_v2', timestamp: Date.now() } }));
+        window.dispatchEvent(new CustomEvent('spm_product_update', { detail: { product: updated } }));
         onSaved(updated);
       } else {
-        const created = db.addProduct(
+        const created = await db.addProduct(
           businessId,
           {
             name: name.trim(),
@@ -240,29 +262,34 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
             expiryDate,
             unit,
             notes: notes.trim(),
-            imageUrl,
-            isPublic,
+            imageUrl: finalImageUrl,
+            isPublic: isPublished,
+            isPublished: isPublished,
+            ownerId,
+            businessName: resolvedBusinessName,
             status: 'active',
           },
           currentUser
         );
+        window.dispatchEvent(new CustomEvent('spm_storage_update', { detail: { key: 'ssm_products_v2', timestamp: Date.now() } }));
+        window.dispatchEvent(new CustomEvent('spm_product_update', { detail: { product: created } }));
         onSaved(created);
       }
       onClose();
     } catch (err: any) {
+      console.error('[AddEditProductModal] Error saving product:', err);
       setError(err.message || 'Failed to save product.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-3xl max-w-4xl w-full overflow-hidden shadow-2xl border border-slate-200 my-6 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] flex flex-col">
-        {/* Header */}
-        <div className="p-6 bg-slate-900 text-white relative shrink-0 flex items-center justify-between">
+        {/* Header Container */}
+        <div id="add-product-container" className="p-6 bg-slate-900 text-white relative shrink-0 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-11 h-11 rounded-xl bg-emerald-600/30 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
-              <Package className="w-6 h-6" />
-            </div>
             <div>
               <h2 className="text-xl font-extrabold tracking-tight">
                 {isEditing ? `Edit Product: ${productToEdit?.name}` : 'Add New Supermarket Product'}
@@ -679,10 +706,20 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
             <button
               id="btn-save-product"
               type="submit"
-              className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center gap-2"
+              disabled={isSaving}
+              className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center gap-2"
             >
-              <CheckCircle2 className="w-4 h-4" />
-              {isEditing ? 'Save Changes' : 'Create Product'}
+              {isSaving ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Saving Product...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  {isEditing ? 'Save Changes' : 'Create Product'}
+                </>
+              )}
             </button>
           </div>
         </form>

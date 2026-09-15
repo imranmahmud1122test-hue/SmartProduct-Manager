@@ -125,7 +125,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 )}
               </div>
               <div>
-                <span className="text-xs text-slate-500 font-semibold">{business?.name || 'Supermarket'}</span>
+                <span className="text-xs text-slate-500 font-semibold">{product.businessName || business?.name || 'Supermarket Store'}</span>
                 <h3 className="text-lg font-bold text-slate-900">{product.name}</h3>
                 <p className="text-xs text-slate-500 line-clamp-1">{product.description}</p>
                 <div className="mt-1 flex items-center gap-2">

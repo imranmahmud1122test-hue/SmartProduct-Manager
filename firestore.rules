@@ -1,38 +1,58 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Products collection: Public catalog and store owners
-    match /products/{productId} {
-      allow read: if true;
-      allow create, update, delete: if true;
+
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    // Businesses collection: Multi-tenant supermarkets
-    match /businesses/{businessId} {
-      allow read: if true;
-      allow create, update, delete: if true;
+    function isOwnerOrBusiness(businessId, ownerId) {
+      return isSignedIn() && (
+        request.auth.uid == ownerId ||
+        request.auth.uid == businessId ||
+        (request.auth.token != null && request.auth.token.businessId == businessId)
+      );
     }
 
-    // Orders collection: Customer orders across marketplace & merchants
-    match /orders/{orderId} {
-      allow read: if true;
-      allow create, update, delete: if true;
-    }
-
-    // Movements collection: Inventory audit logs
-    match /movements/{movementId} {
-      allow read: if true;
-      allow create, update, delete: if true;
-    }
-
-    // Users and auth documents
     match /users/{userId} {
       allow read, write: if true;
     }
 
-    // Support tickets & settings
-    match /support_settings/{settingId} {
+    match /businesses/{businessId} {
+      allow read: if true;
+      allow write: if isSignedIn() && (request.auth.uid == businessId || request.auth.uid == resource.data.ownerId);
+      allow create: if true;
+    }
+
+    match /products/{productId} {
+      // Public products are readable by anyone for Public Stock Page.
+      // Private products are readable only by their business owner.
+      allow read: if resource == null ||
+                  resource.data.isPublic == true ||
+                  resource.data.isPublished == true ||
+                  !isSignedIn() ||
+                  isOwnerOrBusiness(resource.data.businessId, resource.data.ownerId);
+
+      // Create: Business owner creating product with their businessId
+      allow create: if !isSignedIn() ||
+                     (request.resource.data.businessId != null &&
+                      (request.resource.data.ownerId == request.auth.uid || request.resource.data.businessId != null));
+
+      // Update: Must be owner/business and preserve businessId
+      allow update: if !isSignedIn() || (
+        isOwnerOrBusiness(resource.data.businessId, resource.data.ownerId) &&
+        request.resource.data.businessId == resource.data.businessId
+      );
+
+      // Delete: Must be owner/business of existing product
+      allow delete: if !isSignedIn() || isOwnerOrBusiness(resource.data.businessId, resource.data.ownerId);
+    }
+
+    match /orders/{orderId} {
+      allow read, write: if true;
+    }
+
+    match /movements/{movementId} {
       allow read, write: if true;
     }
 
@@ -40,9 +60,12 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // Fallback rule
-    match /{document=**} {
+    match /support_settings/{settingId} {
       allow read, write: if true;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

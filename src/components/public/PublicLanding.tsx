@@ -39,6 +39,7 @@ import { Product, Business, CartItem, Order } from '../../types';
 import { formatCurrency } from '../../utils/codeGenerators';
 import { Logo } from '../common/Logo';
 import { useLanguage, LanguageSwitcher } from '../../context/LanguageContext';
+import { useToast } from '../../context/ToastContext';
 import { HelpSupportModal } from '../common/HelpSupportModal';
 import { OrderModal } from './OrderModal';
 import { OrderConfirmationModal } from './OrderConfirmationModal';
@@ -82,23 +83,67 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
   const [supportModalTab, setSupportModalTab] = useState<'contact' | 'report'>('contact');
 
   const { t } = useLanguage();
+  const { toast } = useToast();
   const supportSettings = db.getSupportSettings();
+  const [isLoadingPublicProducts, setIsLoadingPublicProducts] = useState(false);
 
-  const loadData = () => {
-    setBusinesses(db.getBusinesses().filter((b) => b.status === 'active'));
-    setPublicProducts(db.getPublicProducts());
+  const loadData = async (targetBusinessId?: string) => {
+    // 1. Synchronous initial render from local cache, filtering out pre-populated demo shops SHOP-001 & SHOP-002
+    const activeBiz = db.getBusinesses().filter((b) => b.status === 'active' && b.id !== 'SHOP-001' && b.id !== 'SHOP-002');
+    setBusinesses(activeBiz);
+
+    const bizFilter = targetBusinessId !== undefined ? targetBusinessId : selectedBusinessFilter;
+    const initialPublic = db.getPublicProducts(bizFilter !== 'ALL' ? bizFilter : undefined)
+      .filter((p) => p.businessId !== 'SHOP-001' && p.businessId !== 'SHOP-002');
+    setPublicProducts(initialPublic);
+
+    // 2. Direct Firestore query from the same 'products' collection using businessId parameter
+    try {
+      setIsLoadingPublicProducts(true);
+      const livePublic = await db.fetchPublicProductsFromFirestore(bizFilter !== 'ALL' ? bizFilter : undefined);
+      if (livePublic && livePublic.length > 0) {
+        const filteredLive = livePublic.filter((p) => p.businessId !== 'SHOP-001' && p.businessId !== 'SHOP-002');
+        setPublicProducts(filteredLive);
+      }
+    } catch (err: any) {
+      console.error('[PublicLanding] Error fetching catalog from Firestore:', err);
+      const isPermission =
+        err?.code === 'permission-denied' ||
+        err?.message?.includes('permission-denied') ||
+        err?.message?.includes('Missing or insufficient permissions');
+
+      if (isPermission) {
+        toast.security(
+          `Unable to load public product catalog${bizFilter !== 'ALL' ? ` for store ID "${bizFilter}"` : ''}. Access was restricted by Firestore security rules.`,
+          'Permission Denied'
+        );
+      }
+    } finally {
+      setIsLoadingPublicProducts(false);
+    }
   };
 
   useEffect(() => {
-    loadData();
-    const handleUpdate = () => loadData();
+    loadData(selectedBusinessFilter);
+  }, [selectedBusinessFilter]);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      // Refresh local cache representation, filtering out pre-populated demo shops SHOP-001 & SHOP-002
+      setBusinesses(db.getBusinesses().filter((b) => b.status === 'active' && b.id !== 'SHOP-001' && b.id !== 'SHOP-002'));
+      const activeProds = db.getPublicProducts(selectedBusinessFilter !== 'ALL' ? selectedBusinessFilter : undefined)
+        .filter((p) => p.businessId !== 'SHOP-001' && p.businessId !== 'SHOP-002');
+      setPublicProducts(activeProds);
+    };
     window.addEventListener('spm_storage_update', handleUpdate);
+    window.addEventListener('spm_product_update', handleUpdate);
     window.addEventListener('spm_order_update', handleUpdate);
     return () => {
       window.removeEventListener('spm_storage_update', handleUpdate);
+      window.removeEventListener('spm_product_update', handleUpdate);
       window.removeEventListener('spm_order_update', handleUpdate);
     };
-  }, []);
+  }, [selectedBusinessFilter]);
 
   const openSupport = (tab: 'contact' | 'report' = 'contact') => {
     setSupportModalTab(tab);
@@ -321,46 +366,6 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
                 <Store className="w-5 h-5" />
                 Register as Store Owner
               </button>
-            </div>
-
-            {/* Quick Demo Accounts Banner */}
-            <div className="mt-10 p-4 bg-slate-900 text-white rounded-2xl shadow-xl border border-slate-800 text-left max-w-2xl mx-auto">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Activity className="w-3.5 h-3.5" /> Quick Sandbox Access (1-Click Instant Login)
-                </span>
-                <span className="text-[11px] text-slate-400">Strict Tenant Separation</span>
-              </div>
-              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button
-                  id="btn-quick-metro"
-                  onClick={() => onQuickLogin?.('metro_owner')}
-                  className="p-3 rounded-xl bg-slate-800 hover:bg-emerald-950/80 border border-slate-700 hover:border-emerald-600 text-left transition-all group"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-100 group-hover:text-emerald-400">Metro Supermarket</span>
-                    <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/90 border border-emerald-800/60 px-1.5 py-0.5 rounded">SHOP-001</span>
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">David Harris (Store Owner)</div>
-                  <div className="text-[10px] text-emerald-400 font-medium mt-1.5 flex items-center gap-1">
-                    <span>Full Store Management • POS Register • Inventory</span>
-                  </div>
-                </button>
-                <button
-                  id="btn-quick-valley"
-                  onClick={() => onQuickLogin?.('valley_owner')}
-                  className="p-3 rounded-xl bg-slate-800 hover:bg-teal-950/80 border border-slate-700 hover:border-teal-600 text-left transition-all group"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-100 group-hover:text-teal-400">Fresh Valley Organics</span>
-                    <span className="text-[10px] font-mono text-teal-400 bg-teal-950/90 border border-teal-800/60 px-1.5 py-0.5 rounded">SHOP-002</span>
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">Sarah Jenkins (Store Owner)</div>
-                  <div className="text-[10px] text-teal-400 font-medium mt-1.5 flex items-center gap-1">
-                    <span>Full Store Management • POS Register • Inventory</span>
-                  </div>
-                </button>
-              </div>
             </div>
           </div>
         </div>

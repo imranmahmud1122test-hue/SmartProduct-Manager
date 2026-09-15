@@ -20,12 +20,14 @@ import {
   ChevronRight,
   SlidersHorizontal,
   History,
-  ClipboardList
+  ClipboardList,
+  Trash2
 } from 'lucide-react';
 import { db } from '../../services/storage';
 import { Product, Sale, InventoryMovement, Business, User, Order } from '../../types';
 import { formatCurrency, formatDate, computeProductStockAnalysis } from '../../utils/codeGenerators';
 import { useLanguage } from '../../context/LanguageContext';
+import { useToast } from '../../context/ToastContext';
 
 interface BusinessDashboardProps {
   businessId: string;
@@ -51,12 +53,14 @@ export const BusinessDashboard: React.FC<BusinessDashboardProps> = ({
   onOpenStockAdjustment,
 }) => {
   const { t } = useLanguage();
+  const { toast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [recentMovements, setRecentMovements] = useState<InventoryMovement[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false);
 
-  const loadDashboardData = () => {
+  const syncFromCache = () => {
     const prods = db.getProducts(businessId);
     setProducts(prods);
     const sls = db.getSales(businessId);
@@ -67,11 +71,42 @@ export const BusinessDashboard: React.FC<BusinessDashboardProps> = ({
     setRecentMovements(movs.slice(0, 6));
   };
 
+  const loadDashboardData = async () => {
+    // 1. Synchronous initial render from local cache
+    syncFromCache();
+
+    // 2. Direct Firestore query by businessId for latest live products
+    if (businessId) {
+      try {
+        setIsLoadingProducts(true);
+        const liveProds = await db.fetchProductsFromFirestore(businessId);
+        if (liveProds && liveProds.length > 0) {
+          setProducts(liveProds);
+        }
+      } catch (err: any) {
+        console.error('[BusinessDashboard] Error fetching products from Firestore:', err);
+        const isPermission =
+          err?.code === 'permission-denied' ||
+          err?.message?.includes('permission-denied') ||
+          err?.message?.includes('Missing or insufficient permissions');
+
+        if (isPermission) {
+          toast.security(
+            `Unable to load products for store "${business?.name || businessId}". Firestore security rules prevented access.`,
+            'Permission Denied'
+          );
+        }
+      } finally {
+        setIsLoadingProducts(false);
+      }
+    }
+  };
+
   useEffect(() => {
     loadDashboardData();
 
     const handleStorageUpdate = () => {
-      loadDashboardData();
+      syncFromCache();
     };
 
     window.addEventListener('spm_storage_update', handleStorageUpdate);
@@ -81,6 +116,14 @@ export const BusinessDashboard: React.FC<BusinessDashboardProps> = ({
       window.removeEventListener('spm_order_update', handleStorageUpdate);
     };
   }, [businessId, currentUser.id]);
+
+  const handleDeleteMovement = (movId: string, productName: string) => {
+    if (window.confirm(`Are you sure you want to delete this stock movement entry for "${productName}"?`)) {
+      db.deleteMovement(movId);
+      toast.success('Stock movement record deleted successfully.');
+      syncFromCache();
+    }
+  };
 
   const currency = business?.currencySymbol || '৳';
 
@@ -446,7 +489,7 @@ export const BusinessDashboard: React.FC<BusinessDashboardProps> = ({
           {recentMovements.map((mov) => (
             <div
               key={mov.id}
-              className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-2"
+              className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-2 relative group hover:border-slate-300 transition-all"
             >
               <div className="flex items-center justify-between">
                 <span
@@ -460,7 +503,16 @@ export const BusinessDashboard: React.FC<BusinessDashboardProps> = ({
                 >
                   {mov.type === 'RECEIVING' ? '+ INWARD LOAD' : mov.type === 'SALE' ? '- POS SALE' : mov.type}
                 </span>
-                <span className="text-[10px] text-slate-400">{formatDate(mov.createdAt)}</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-slate-400">{formatDate(mov.createdAt)}</span>
+                  <button
+                    onClick={() => handleDeleteMovement(mov.id, mov.productName)}
+                    title="Delete Stock Movement Record"
+                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
 
               <h4 className="font-bold text-slate-900 line-clamp-1">{mov.productName}</h4>

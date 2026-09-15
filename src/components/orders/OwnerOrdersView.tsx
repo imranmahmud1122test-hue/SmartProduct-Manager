@@ -28,7 +28,8 @@ import { db } from '../../services/storage';
 import { formatCurrency } from '../../utils/codeGenerators';
 
 interface OwnerOrdersViewProps {
-  business: Business;
+  businessId?: string;
+  business: Business | null;
   currentUser: User;
 }
 
@@ -88,9 +89,14 @@ const STATUS_CONFIG: Record<
 };
 
 export const OwnerOrdersView: React.FC<OwnerOrdersViewProps> = ({
+  businessId,
   business,
   currentUser,
 }) => {
+  const effectiveBusinessId = business?.id || businessId || currentUser.businessId || 'SHOP-001';
+  const currency = business?.currencySymbol || '৳';
+  const storeName = business?.name || currentUser.businessName || 'Supermarket Store';
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -107,7 +113,7 @@ export const OwnerOrdersView: React.FC<OwnerOrdersViewProps> = ({
   const [statusNote, setStatusNote] = useState('');
 
   const loadOrders = () => {
-    const ownerOrders = db.getOrdersByOwner(currentUser.id, business.id);
+    const ownerOrders = db.getOrdersByOwner(currentUser.id, effectiveBusinessId);
     setOrders(ownerOrders);
   };
 
@@ -120,7 +126,7 @@ export const OwnerOrdersView: React.FC<OwnerOrdersViewProps> = ({
       window.removeEventListener('spm_storage_update', handleUpdate);
       window.removeEventListener('spm_order_update', handleUpdate);
     };
-  }, [business.id, currentUser.id]);
+  }, [effectiveBusinessId, currentUser.id]);
 
   // Analytics
   const nonCancelled = orders.filter((o) => o.orderStatus !== 'Cancelled');
@@ -203,7 +209,7 @@ export const OwnerOrdersView: React.FC<OwnerOrdersViewProps> = ({
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
             Manage incoming customer orders, update tracking statuses, and print packing slips for{' '}
-            <strong>{business.name}</strong>.
+            <strong>{storeName}</strong>.
           </p>
         </div>
 
@@ -718,9 +724,9 @@ export const OwnerOrdersView: React.FC<OwnerOrdersViewProps> = ({
             {/* Slip Paper */}
             <div id="printable-order-slip" className="border border-slate-200 rounded-2xl p-4 bg-white text-xs space-y-3 font-sans">
               <div className="text-center border-b border-slate-200 pb-3">
-                <h3 className="text-base font-extrabold text-slate-900">{business.name}</h3>
-                <p className="text-[11px] text-slate-500">{business.address}</p>
-                <p className="text-[11px] text-slate-500">Phone: {business.phone}</p>
+                <h3 className="text-base font-extrabold text-slate-900">{storeName}</h3>
+                {business?.address && <p className="text-[11px] text-slate-500">{business.address}</p>}
+                {business?.phone && <p className="text-[11px] text-slate-500">Phone: {business.phone}</p>}
                 <span className="inline-block mt-2 font-mono font-bold text-sm bg-slate-100 px-3 py-1 rounded-lg">
                   {invoiceOrder.orderId}
                 </span>

@@ -152,7 +152,7 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
         address: address.trim() || 'Dhaka, Bangladesh',
         businessType,
         currencySymbol: currencySymbol.trim() || '৳',
-        logoUrl: logoUrl || 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=200&auto=format&fit=crop&q=80',
+        logoUrl: logoUrl.trim() || undefined,
       });
 
       db.setCurrentUser(user);

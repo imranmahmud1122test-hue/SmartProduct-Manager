@@ -11,7 +11,8 @@ import {
   FileSpreadsheet,
   Printer,
   Calendar,
-  UserCheck
+  UserCheck,
+  Trash2
 } from 'lucide-react';
 import { db } from '../../services/storage';
 import { Product, InventoryMovement, Business } from '../../types';
@@ -35,12 +36,25 @@ export const StockHistoryModal: React.FC<StockHistoryModalProps> = ({
   const [filterType, setFilterType] = useState<string>('ALL');
   const business = db.getBusinesses().find((b) => b.id === businessId) || null;
 
-  useEffect(() => {
+  const loadHistory = () => {
     if (isOpen && product) {
       const hist = db.getMovements(businessId, product.id);
       setMovements(hist);
     }
+  };
+
+  useEffect(() => {
+    loadHistory();
+    window.addEventListener('spm_storage_update', loadHistory);
+    return () => window.removeEventListener('spm_storage_update', loadHistory);
   }, [isOpen, product, businessId]);
+
+  const handleDeleteMovement = (movId: string) => {
+    if (window.confirm('Are you sure you want to delete this stock movement record?')) {
+      db.deleteMovement(movId);
+      loadHistory();
+    }
+  };
 
   if (!isOpen || !product) return null;
 
@@ -202,29 +216,38 @@ export const StockHistoryModal: React.FC<StockHistoryModalProps> = ({
                   </div>
 
                   {/* Stock delta flow: Previous -> Change -> New */}
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex items-center gap-3 shrink-0 self-end sm:self-center">
-                    <div className="text-center">
-                      <span className="text-[10px] text-slate-400 block font-medium">Previous</span>
-                      <span className="font-bold text-slate-700">{item.previousStock}</span>
+                  <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex items-center gap-3">
+                      <div className="text-center">
+                        <span className="text-[10px] text-slate-400 block font-medium">Previous</span>
+                        <span className="font-bold text-slate-700">{item.previousStock}</span>
+                      </div>
+                      <div className="text-slate-400 font-bold">→</div>
+                      <div className="text-center">
+                        <span className="text-[10px] text-slate-400 block font-medium">Change</span>
+                        <span
+                          className={`font-bold ${
+                            item.type === 'SALE' || item.type === 'ADJUSTMENT_SUB'
+                              ? 'text-rose-600'
+                              : 'text-emerald-600'
+                          }`}
+                        >
+                          {item.type === 'SALE' || item.type === 'ADJUSTMENT_SUB' ? `-${item.quantity}` : `+${item.quantity}`}
+                        </span>
+                      </div>
+                      <div className="text-slate-400 font-bold">→</div>
+                      <div className="text-center">
+                        <span className="text-[10px] text-emerald-800 block font-bold">New Stock</span>
+                        <span className="font-extrabold text-emerald-700 text-sm">{item.newStock} {product.unit}</span>
+                      </div>
                     </div>
-                    <div className="text-slate-400 font-bold">→</div>
-                    <div className="text-center">
-                      <span className="text-[10px] text-slate-400 block font-medium">Change</span>
-                      <span
-                        className={`font-bold ${
-                          item.type === 'SALE' || item.type === 'ADJUSTMENT_SUB'
-                            ? 'text-rose-600'
-                            : 'text-emerald-600'
-                        }`}
-                      >
-                        {item.type === 'SALE' || item.type === 'ADJUSTMENT_SUB' ? `-${item.quantity}` : `+${item.quantity}`}
-                      </span>
-                    </div>
-                    <div className="text-slate-400 font-bold">→</div>
-                    <div className="text-center">
-                      <span className="text-[10px] text-emerald-800 block font-bold">New Stock</span>
-                      <span className="font-extrabold text-emerald-700 text-sm">{item.newStock} {product.unit}</span>
-                    </div>
+                    <button
+                      onClick={() => handleDeleteMovement(item.id)}
+                      title="Delete Stock Movement Record"
+                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors border border-slate-200"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               ))}

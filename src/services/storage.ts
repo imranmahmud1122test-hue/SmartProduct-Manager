@@ -23,10 +23,14 @@ import {
   setDoc,
   deleteDoc,
   onSnapshot,
+  query,
+  where,
   testFirestoreConnection,
   handleFirestoreError,
   OperationType
 } from './firebase';
+import { emitGlobalToast } from '../context/ToastContext';
+import { compressImageDataUrl } from '../utils/imageCompressor';
 
 const STORAGE_KEYS = {
   USERS: 'ssm_users_v2',
@@ -164,6 +168,7 @@ const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'PROD-001',
     businessId: 'SHOP-001',
+    ownerId: 'USR-METRO',
     name: 'Fresh Whole Milk 1 Gallon',
     description: 'Fresh pasteurized Grade A whole milk with vitamin D. Sourced daily from local dairy farms.',
     category: 'Dairy & Eggs',
@@ -186,6 +191,7 @@ const INITIAL_PRODUCTS: Product[] = [
     notes: 'Keep refrigerated between 34°F and 38°F',
     imageUrl: 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=400&auto=format&fit=crop&q=80',
     isPublic: true,
+    isPublished: true,
     status: 'active',
     createdAt: '2026-08-01T08:00:00Z',
     updatedAt: '2026-09-10T11:00:00Z',
@@ -193,6 +199,7 @@ const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'PROD-002',
     businessId: 'SHOP-001',
+    ownerId: 'USR-METRO',
     name: 'Basmati Premium Long Grain Rice 5kg',
     description: 'Aged Himalayan long grain aromatic basmati rice. Fluffy and non-sticky when cooked.',
     category: 'Pantry & Grains',
@@ -215,6 +222,7 @@ const INITIAL_PRODUCTS: Product[] = [
     notes: 'Store in cool and dry airtight container',
     imageUrl: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400&auto=format&fit=crop&q=80',
     isPublic: true,
+    isPublished: true,
     status: 'active',
     createdAt: '2026-08-01T08:00:00Z',
     updatedAt: '2026-09-08T14:00:00Z',
@@ -222,6 +230,7 @@ const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'PROD-003',
     businessId: 'SHOP-001',
+    ownerId: 'USR-METRO',
     name: 'Classic Cola Soda Can (Pack of 6)',
     description: 'Original refreshing carbonated soda cans. Crisp effervescence and balanced sweet cola flavor.',
     category: 'Beverages',
@@ -244,6 +253,7 @@ const INITIAL_PRODUCTS: Product[] = [
     notes: 'High velocity seller, auto replenishment needed',
     imageUrl: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=400&auto=format&fit=crop&q=80',
     isPublic: true,
+    isPublished: true,
     status: 'active',
     createdAt: '2026-08-01T08:00:00Z',
     updatedAt: '2026-09-12T16:00:00Z',
@@ -251,6 +261,7 @@ const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'PROD-004',
     businessId: 'SHOP-001',
+    ownerId: 'USR-METRO',
     name: 'Artisan Sourdough Loaf 500g',
     description: 'Naturally fermented rustic sourdough with a crunchy crust and tender open crumb.',
     category: 'Bakery',
@@ -273,6 +284,7 @@ const INITIAL_PRODUCTS: Product[] = [
     notes: 'Fresh bake received every morning at 7:00 AM',
     imageUrl: 'https://images.unsplash.com/photo-1589367920969-ab8e050bbb04?w=400&auto=format&fit=crop&q=80',
     isPublic: true,
+    isPublished: true,
     status: 'active',
     createdAt: '2026-08-05T09:00:00Z',
     updatedAt: '2026-09-13T07:00:00Z',
@@ -280,6 +292,7 @@ const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'PROD-005',
     businessId: 'SHOP-001',
+    ownerId: 'USR-METRO',
     name: 'Extra Virgin Olive Oil 750ml',
     description: 'Cold-pressed extra virgin olive oil from Mediterranean olives. Rich aroma and peppery finish.',
     category: 'Pantry & Grains',
@@ -302,6 +315,7 @@ const INITIAL_PRODUCTS: Product[] = [
     notes: 'Premium dark glass bottle protection',
     imageUrl: 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=400&auto=format&fit=crop&q=80',
     isPublic: false, // Private product example
+    isPublished: false,
     status: 'active',
     createdAt: '2026-08-06T10:00:00Z',
     updatedAt: '2026-09-02T15:00:00Z',
@@ -309,6 +323,7 @@ const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'PROD-006',
     businessId: 'SHOP-001',
+    ownerId: 'USR-METRO',
     name: 'Fresh Organic Bananas (Per Kg)',
     description: 'Sweet and creamy high-potassium yellow bananas, ethically harvested from sustainable farms.',
     category: 'Fresh Produce',
@@ -331,6 +346,7 @@ const INITIAL_PRODUCTS: Product[] = [
     notes: 'Daily turnover item',
     imageUrl: 'https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?w=400&auto=format&fit=crop&q=80',
     isPublic: true,
+    isPublished: true,
     status: 'active',
     createdAt: '2026-08-01T08:00:00Z',
     updatedAt: '2026-09-12T10:00:00Z',
@@ -340,6 +356,7 @@ const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'PROD-201',
     businessId: 'SHOP-002',
+    ownerId: 'USR-VALLEY',
     name: 'Organic Honeycomb Pure Honey 500g',
     description: 'Raw unfiltered clover blossom honey with raw comb section. Rich in natural floral enzymes.',
     category: 'Pantry & Grains',
@@ -362,6 +379,7 @@ const INITIAL_PRODUCTS: Product[] = [
     notes: '100% pure raw unprocessed honey',
     imageUrl: 'https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=400&auto=format&fit=crop&q=80',
     isPublic: true,
+    isPublished: true,
     status: 'active',
     createdAt: '2026-08-10T10:00:00Z',
     updatedAt: '2026-09-05T12:00:00Z',
@@ -369,6 +387,7 @@ const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'PROD-202',
     businessId: 'SHOP-002',
+    ownerId: 'USR-VALLEY',
     name: 'Organic Hass Avocados (Pack of 4)',
     description: 'Ripe and ready-to-eat rich buttery Hass avocados. Certified USDA Organic.',
     category: 'Fresh Produce',
@@ -391,6 +410,7 @@ const INITIAL_PRODUCTS: Product[] = [
     notes: 'Customer favorite item',
     imageUrl: 'https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?w=400&auto=format&fit=crop&q=80',
     isPublic: true,
+    isPublished: true,
     status: 'active',
     createdAt: '2026-08-10T10:00:00Z',
     updatedAt: '2026-09-12T14:00:00Z',
@@ -795,24 +815,81 @@ function getFromStorage<T>(key: string, defaultValue: T): T {
   try {
     const item = localStorage.getItem(key);
     if (!item) {
-      localStorage.setItem(key, JSON.stringify(defaultValue));
+      setToStorage(key, defaultValue);
       return defaultValue;
     }
     return JSON.parse(item);
   } catch (err) {
-    console.error(`Error reading ${key} from storage:`, err);
+    console.warn(`Error reading ${key} from storage:`, err);
     return defaultValue;
   }
 }
 
-function setToStorage<T>(key: string, value: T): void {
+function safeSetItem(key: string, valueStr: string): boolean {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('spm_storage_update', { detail: { key, timestamp: Date.now() } }));
-    }
+    localStorage.setItem(key, valueStr);
+    return true;
   } catch (err) {
-    console.error(`Error saving ${key} to storage:`, err);
+    return false;
+  }
+}
+
+function setToStorage<T>(key: string, value: T, notify = false): void {
+  try {
+    const jsonStr = JSON.stringify(value);
+    if (safeSetItem(key, jsonStr)) {
+      if (notify && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spm_storage_update', { detail: { key, timestamp: Date.now() } }));
+      }
+      return;
+    }
+
+    // Quota Exceeded Recovery Strategy
+    // 1. If storing array of items (e.g. PRODUCTS, SALES, MOVEMENTS, ORDERS), strip large base64 data URLs from local storage cache
+    if (Array.isArray(value)) {
+      const sanitized = value.map((item: any) => {
+        if (item && typeof item === 'object' && typeof item.imageUrl === 'string' && item.imageUrl.startsWith('data:image/')) {
+          return { ...item, imageUrl: '' };
+        }
+        return item;
+      });
+
+      const sanitizedStr = JSON.stringify(sanitized);
+      if (safeSetItem(key, sanitizedStr)) {
+        if (notify && typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('spm_storage_update', { detail: { key, timestamp: Date.now() } }));
+        }
+        return;
+      }
+
+      // 2. If still exceeding, keep ALL custom user-created products and trim only static seed demo products
+      const customItems = sanitized.filter((item: any) => item && item.id && !String(item.id).startsWith('PROD-INIT'));
+      const demoItems = sanitized.filter((item: any) => item && item.id && String(item.id).startsWith('PROD-INIT'));
+      const trimmedList = [...customItems, ...demoItems.slice(0, 15)];
+      const trimmedStr = JSON.stringify(trimmedList);
+      if (safeSetItem(key, trimmedStr)) {
+        if (notify && typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('spm_storage_update', { detail: { key, timestamp: Date.now() } }));
+        }
+        return;
+      }
+    }
+
+    // 3. Clear non-critical cached keys if still full
+    try {
+      localStorage.removeItem('ssm_receipts_v2');
+      localStorage.removeItem('ssm_audit_logs_v2');
+      if (safeSetItem(key, jsonStr)) {
+        if (notify && typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('spm_storage_update', { detail: { key, timestamp: Date.now() } }));
+        }
+        return;
+      }
+    } catch (_) {}
+
+    console.warn(`[Storage] LocalStorage quota reached for ${key}. Data remains active in memory and synchronized with Cloud Firestore.`);
+  } catch (err) {
+    console.warn(`[Storage] Unable to save ${key} to localStorage:`, err);
   }
 }
 
@@ -855,7 +932,7 @@ export async function syncWithFirestore(): Promise<void> {
           cloudProducts.push(docSnap.data() as Product);
         });
         if (cloudProducts.length > 0) {
-          setToStorage(STORAGE_KEYS.PRODUCTS, cloudProducts);
+          setToStorage(STORAGE_KEYS.PRODUCTS, cloudProducts, false);
           console.log(`[Firestore] Hydrated ${cloudProducts.length} live products from Cloud Firestore.`);
         }
       }
@@ -869,7 +946,7 @@ export async function syncWithFirestore(): Promise<void> {
       if (!bizSnap.empty) {
         const cloudBiz: Business[] = [];
         bizSnap.forEach((docSnap) => cloudBiz.push(docSnap.data() as Business));
-        setToStorage(STORAGE_KEYS.BUSINESSES, cloudBiz);
+        setToStorage(STORAGE_KEYS.BUSINESSES, cloudBiz, false);
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, 'businesses');
@@ -881,7 +958,7 @@ export async function syncWithFirestore(): Promise<void> {
       if (!ordSnap.empty) {
         const cloudOrders: Order[] = [];
         ordSnap.forEach((docSnap) => cloudOrders.push(docSnap.data() as Order));
-        setToStorage(STORAGE_KEYS.ORDERS, cloudOrders);
+        setToStorage(STORAGE_KEYS.ORDERS, cloudOrders, false);
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, 'orders');
@@ -893,45 +970,82 @@ export async function syncWithFirestore(): Promise<void> {
       if (!usrSnap.empty) {
         const cloudUsers: User[] = [];
         usrSnap.forEach((docSnap) => cloudUsers.push(docSnap.data() as User));
-        setToStorage(STORAGE_KEYS.USERS, cloudUsers);
+        setToStorage(STORAGE_KEYS.USERS, cloudUsers, false);
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, 'users');
     }
 
-    // 5. Real-time Listeners for instant multi-device / multi-environment sync
-    onSnapshot(collection(firestoreDb, 'products'), (snapshot) => {
-      if (!snapshot.empty) {
-        const liveProducts: Product[] = [];
-        snapshot.forEach((docSnap) => liveProducts.push(docSnap.data() as Product));
-        setToStorage(STORAGE_KEYS.PRODUCTS, liveProducts);
+    // 5. Hydrate Movements from Firestore
+    try {
+      const movSnap = await getDocs(collection(firestoreDb, 'movements'));
+      if (!movSnap.empty) {
+        const cloudMovs: InventoryMovement[] = [];
+        movSnap.forEach((docSnap) => cloudMovs.push(docSnap.data() as InventoryMovement));
+        setToStorage(STORAGE_KEYS.MOVEMENTS, cloudMovs, false);
       }
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'products'));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, 'movements');
+    }
 
-    onSnapshot(collection(firestoreDb, 'businesses'), (snapshot) => {
-      if (!snapshot.empty) {
-        const liveBusinesses: Business[] = [];
-        snapshot.forEach((docSnap) => liveBusinesses.push(docSnap.data() as Business));
-        setToStorage(STORAGE_KEYS.BUSINESSES, liveBusinesses);
-      }
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'businesses'));
+    // 6. Real-time Listeners for instant multi-device / multi-environment sync
+    onSnapshot(
+      collection(firestoreDb, 'products'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const liveProducts: Product[] = [];
+          snapshot.forEach((docSnap) => liveProducts.push(docSnap.data() as Product));
+          setToStorage(STORAGE_KEYS.PRODUCTS, liveProducts, false);
+        }
+      },
+      (err) => handleFirestoreError(err, OperationType.GET, 'products')
+    );
 
-    onSnapshot(collection(firestoreDb, 'orders'), (snapshot) => {
-      if (!snapshot.empty) {
-        const liveOrders: Order[] = [];
-        snapshot.forEach((docSnap) => liveOrders.push(docSnap.data() as Order));
-        setToStorage(STORAGE_KEYS.ORDERS, liveOrders);
-      }
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'orders'));
+    onSnapshot(
+      collection(firestoreDb, 'businesses'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const liveBusinesses: Business[] = [];
+          snapshot.forEach((docSnap) => liveBusinesses.push(docSnap.data() as Business));
+          setToStorage(STORAGE_KEYS.BUSINESSES, liveBusinesses, false);
+        }
+      },
+      (err) => handleFirestoreError(err, OperationType.GET, 'businesses')
+    );
 
-    onSnapshot(collection(firestoreDb, 'users'), (snapshot) => {
-      if (!snapshot.empty) {
-        const liveUsers: User[] = [];
-        snapshot.forEach((docSnap) => liveUsers.push(docSnap.data() as User));
-        setToStorage(STORAGE_KEYS.USERS, liveUsers);
-      }
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'users'));
+    onSnapshot(
+      collection(firestoreDb, 'orders'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const liveOrders: Order[] = [];
+          snapshot.forEach((docSnap) => liveOrders.push(docSnap.data() as Order));
+          setToStorage(STORAGE_KEYS.ORDERS, liveOrders, false);
+        }
+      },
+      (err) => handleFirestoreError(err, OperationType.GET, 'orders')
+    );
 
+    onSnapshot(
+      collection(firestoreDb, 'users'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const liveUsers: User[] = [];
+          snapshot.forEach((docSnap) => liveUsers.push(docSnap.data() as User));
+          setToStorage(STORAGE_KEYS.USERS, liveUsers, false);
+        }
+      },
+      (err) => handleFirestoreError(err, OperationType.GET, 'users')
+    );
+
+    onSnapshot(
+      collection(firestoreDb, 'movements'),
+      (snapshot) => {
+        const liveMovements: InventoryMovement[] = [];
+        snapshot.forEach((docSnap) => liveMovements.push(docSnap.data() as InventoryMovement));
+        setToStorage(STORAGE_KEYS.MOVEMENTS, liveMovements, true);
+      },
+      (err) => handleFirestoreError(err, OperationType.GET, 'movements')
+    );
   } catch (globalErr) {
     console.warn('[Firestore] Sync notice:', globalErr);
   }
@@ -940,7 +1054,7 @@ export async function syncWithFirestore(): Promise<void> {
 // Ensure database initialization
 export function initializeStorage(): void {
   if (!localStorage.getItem(STORAGE_KEYS.USERS)) {
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
+    setToStorage(STORAGE_KEYS.USERS, INITIAL_USERS);
   } else {
     // Ensure all demo users exist
     try {
@@ -953,15 +1067,15 @@ export function initializeStorage(): void {
         }
       });
       if (updated) {
-        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(existingUsers));
+        setToStorage(STORAGE_KEYS.USERS, existingUsers);
       }
     } catch (e) {
-      console.error('User migration error:', e);
+      console.warn('User migration error:', e);
     }
   }
 
   if (!localStorage.getItem(STORAGE_KEYS.BUSINESSES)) {
-    localStorage.setItem(STORAGE_KEYS.BUSINESSES, JSON.stringify(INITIAL_BUSINESSES));
+    setToStorage(STORAGE_KEYS.BUSINESSES, INITIAL_BUSINESSES);
   } else {
     // Migrate any stored business currencySymbol from '$' to '৳' (BDT)
     try {
@@ -975,35 +1089,63 @@ export function initializeStorage(): void {
         return b;
       });
       if (changed) {
-        localStorage.setItem(STORAGE_KEYS.BUSINESSES, JSON.stringify(updatedBiz));
+        setToStorage(STORAGE_KEYS.BUSINESSES, updatedBiz);
       }
     } catch (e) {
-      console.error('Currency migration error:', e);
+      console.warn('Currency migration error:', e);
     }
   }
 
   if (!localStorage.getItem(STORAGE_KEYS.PRODUCTS)) {
-    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(INITIAL_PRODUCTS));
+    setToStorage(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
+  } else {
+    // Migrate cached products to ensure store businessName is populated
+    try {
+      const storedProds: Product[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.PRODUCTS) || '[]');
+      const storedBiz: Business[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.BUSINESSES) || '[]');
+      const storedUsers: User[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]');
+      const bizMap = new Map<string, Business>(storedBiz.map((b) => [b.id, b]));
+      const usrMap = new Map<string, User>(storedUsers.map((u) => [u.id, u]));
+
+      let prodChanged = false;
+      const updatedProds = storedProds.map((p) => {
+        const b = bizMap.get(p.businessId);
+        const u = p.ownerId ? usrMap.get(p.ownerId) : storedUsers.find((user) => user.businessId === p.businessId);
+        const resolvedName = p.businessName || b?.name || u?.businessName;
+        if (resolvedName && p.businessName !== resolvedName) {
+          prodChanged = true;
+          return { ...p, businessName: resolvedName };
+        }
+        return p;
+      });
+      if (prodChanged) {
+        setToStorage(STORAGE_KEYS.PRODUCTS, updatedProds);
+      }
+    } catch (e) {
+      console.warn('Product migration error:', e);
+    }
   }
   if (!localStorage.getItem(STORAGE_KEYS.SUPPLIERS)) {
-    localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(INITIAL_SUPPLIERS));
+    setToStorage(STORAGE_KEYS.SUPPLIERS, INITIAL_SUPPLIERS);
   }
   if (!localStorage.getItem(STORAGE_KEYS.MOVEMENTS)) {
-    localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(INITIAL_MOVEMENTS));
+    setToStorage(STORAGE_KEYS.MOVEMENTS, INITIAL_MOVEMENTS);
   }
   if (!localStorage.getItem(STORAGE_KEYS.SALES)) {
-    localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify(INITIAL_SALES));
+    setToStorage(STORAGE_KEYS.SALES, INITIAL_SALES);
   }
   if (!localStorage.getItem(STORAGE_KEYS.AUDIT_LOGS)) {
-    localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(INITIAL_AUDIT_LOGS));
+    setToStorage(STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
   }
   if (!localStorage.getItem(STORAGE_KEYS.ORDERS)) {
-    localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(INITIAL_ORDERS));
+    setToStorage(STORAGE_KEYS.ORDERS, INITIAL_ORDERS);
   }
 
   // Auto-connect and sync live Cloud Firestore
   syncWithFirestore().catch((e) => console.error('[Firestore] Initialization error:', e));
 }
+
+let cachedProductsInMemory: Product[] | null = null;
 
 // Data Access Layer (Repository)
 export const db = {
@@ -1039,7 +1181,7 @@ export const db = {
   }): User {
     const users = this.getUsers();
     const newUser: User = {
-      id: `USR-${Date.now().toString(36).toUpperCase()}`,
+      id: `USR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
       email: userData.email,
       name: userData.name,
       role: userData.role,
@@ -1125,7 +1267,7 @@ export const db = {
 
     const newShopIndex = businesses.length + 1;
     const businessId = `SHOP-${String(newShopIndex).padStart(3, '0')}`;
-    const userId = `USR-${Date.now().toString(36).toUpperCase()}`;
+    const userId = `USR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     const finalBusinessName = data.businessName || data.name || 'My Supermarket';
 
     const newBusiness: Business = {
@@ -1276,31 +1418,198 @@ export const db = {
 
   // Products (Tenant-isolated)
   getAllProductsRaw(): Product[] {
-    return getFromStorage<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
+    if (!cachedProductsInMemory) {
+      cachedProductsInMemory = getFromStorage<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
+    }
+    return cachedProductsInMemory;
+  },
+
+  setProductsInMemory(products: Product[], notify = true): void {
+    cachedProductsInMemory = [...products];
+    setToStorage(STORAGE_KEYS.PRODUCTS, products, notify);
   },
 
   getProducts(businessId: string): Product[] {
     const all = this.getAllProductsRaw();
-    return all.filter((p) => p.businessId === businessId);
+    const businesses = this.getBusinesses();
+    const users = this.getUsers();
+    const businessMap = new Map<string, Business>(businesses.map((b) => [b.id, b]));
+    const userMap = new Map<string, User>(users.map((u) => [u.id, u]));
+
+    return all
+      .filter((p) => p.businessId === businessId)
+      .map((p) => {
+        const business = businessMap.get(p.businessId);
+        const ownerUser = p.ownerId ? userMap.get(p.ownerId) : users.find((u) => u.businessId === p.businessId);
+        const resolvedName =
+          p.businessName ||
+          business?.name ||
+          ownerUser?.businessName ||
+          'Supermarket Store';
+        return {
+          ...p,
+          businessName: resolvedName,
+        };
+      });
+  },
+
+  /**
+   * Directly queries the live 'products' Firestore collection for a specific businessId.
+   * Updates local state cache and emits a security toast notification if restricted by security rules.
+   */
+  async fetchProductsFromFirestore(businessId: string): Promise<Product[]> {
+    if (!businessId) return [];
+    try {
+      const q = query(
+        collection(firestoreDb, 'products'),
+        where('businessId', '==', businessId)
+      );
+      const snapshot = await getDocs(q);
+      const liveProducts: Product[] = [];
+      snapshot.forEach((docSnap) => {
+        liveProducts.push(docSnap.data() as Product);
+      });
+
+      // Update local storage cache for this business
+      const businesses = this.getBusinesses();
+      const users = this.getUsers();
+      const businessMap = new Map<string, Business>(businesses.map((b) => [b.id, b]));
+      const userMap = new Map<string, User>(users.map((u) => [u.id, u]));
+
+      const enrichedProducts = liveProducts.map((p) => {
+        const business = businessMap.get(p.businessId);
+        const ownerUser = p.ownerId ? userMap.get(p.ownerId) : users.find((u) => u.businessId === p.businessId);
+        const resolvedName =
+          p.businessName ||
+          business?.name ||
+          ownerUser?.businessName ||
+          'Supermarket Store';
+        return {
+          ...p,
+          businessName: resolvedName,
+        };
+      });
+
+      // Merge enriched live products with existing local memory products so offline/new products aren't lost
+      const existingAll = this.getAllProductsRaw();
+      const productMap = new Map<string, Product>(existingAll.map((p) => [p.id, p]));
+      enrichedProducts.forEach((p) => {
+        productMap.set(p.id, p);
+      });
+
+      const updatedList = Array.from(productMap.values());
+      this.setProductsInMemory(updatedList, true);
+
+      return this.getProducts(businessId);
+    } catch (error: any) {
+      handleFirestoreError(error, OperationType.LIST, `products (businessId: ${businessId})`);
+      const isPermission =
+        error?.code === 'permission-denied' ||
+        error?.message?.includes('permission-denied') ||
+        error?.message?.includes('Missing or insufficient permissions') ||
+        error?.message?.includes('insufficient permissions');
+
+      if (isPermission) {
+        emitGlobalToast(
+          'security',
+          'Owner Dashboard: Security Restriction',
+          `Access to store inventory for "${businessId}" was denied by Firestore security rules. Verify your store credentials.`
+        );
+      }
+      return this.getProducts(businessId);
+    }
   },
 
   getPublicProducts(businessId?: string): (Product & { businessName?: string })[] {
     const all = this.getAllProductsRaw();
     const businesses = this.getBusinesses();
+    const users = this.getUsers();
     const businessMap = new Map<string, Business>(businesses.map((b) => [b.id, b]));
+    const userMap = new Map<string, User>(users.map((u) => [u.id, u]));
 
     return all
       .filter((p) => {
         const business = businessMap.get(p.businessId);
         if (business && business.status === 'suspended') return false;
-        if (!p.isPublic || p.status === 'archived') return false;
-        if (businessId && p.businessId !== businessId) return false;
+        if (p.status === 'archived') return false;
+
+        const isPublic =
+          p.isPublic !== undefined
+            ? Boolean(p.isPublic)
+            : p.isPublished !== undefined
+            ? Boolean(p.isPublished)
+            : true;
+        if (!isPublic) return false;
+
+        if (businessId && businessId !== 'ALL' && p.businessId !== businessId) return false;
         return true;
       })
-      .map((p) => ({
-        ...p,
-        businessName: businessMap.get(p.businessId)?.name || 'Supermarket',
-      }));
+      .map((p) => {
+        const business = businessMap.get(p.businessId);
+        const ownerUser = p.ownerId ? userMap.get(p.ownerId) : users.find((u) => u.businessId === p.businessId);
+        const resolvedName =
+          p.businessName ||
+          business?.name ||
+          ownerUser?.businessName ||
+          (p.businessId && p.businessId !== 'MULTI' ? `Store ${p.businessId}` : 'Supermarket Store');
+        return {
+          ...p,
+          businessName: resolvedName,
+        };
+      });
+  },
+
+  /**
+   * Directly queries the live 'products' Firestore collection for the Public Catalog.
+   * If a businessId is specified, filters by that businessId.
+   * Handles security rule restrictions with a toast notification.
+   */
+  async fetchPublicProductsFromFirestore(businessId?: string): Promise<(Product & { businessName?: string })[]> {
+    try {
+      let q;
+      if (businessId && businessId !== 'ALL') {
+        q = query(
+          collection(firestoreDb, 'products'),
+          where('businessId', '==', businessId)
+        );
+      } else {
+        q = query(collection(firestoreDb, 'products'));
+      }
+
+      const snapshot = await getDocs(q);
+      const liveProducts: Product[] = [];
+      snapshot.forEach((docSnap) => {
+        liveProducts.push(docSnap.data() as Product);
+      });
+
+      if (liveProducts.length > 0) {
+        const existingAll = this.getAllProductsRaw();
+        const productMap = new Map<string, Product>(existingAll.map((p) => [p.id, p]));
+        liveProducts.forEach((lp) => {
+          productMap.set(lp.id, lp);
+        });
+        const mergedList = Array.from(productMap.values());
+        this.setProductsInMemory(mergedList, true);
+      }
+
+      return this.getPublicProducts(businessId && businessId !== 'ALL' ? businessId : undefined);
+    } catch (error: any) {
+      handleFirestoreError(error, OperationType.LIST, `products (public catalog, businessId: ${businessId || 'ALL'})`);
+      const isPermission =
+        error?.code === 'permission-denied' ||
+        error?.message?.includes('permission-denied') ||
+        error?.message?.includes('Missing or insufficient permissions') ||
+        error?.message?.includes('insufficient permissions');
+
+      if (isPermission) {
+        emitGlobalToast(
+          'security',
+          'Public Catalog: Security Restriction',
+          `Public product query${businessId && businessId !== 'ALL' ? ` for store "${businessId}"` : ''} was denied by Firestore security rules.`
+        );
+      }
+      return this.getPublicProducts(businessId && businessId !== 'ALL' ? businessId : undefined);
+    }
   },
 
   getProductById(businessId: string, productId: string): Product | undefined {
@@ -1308,9 +1617,13 @@ export const db = {
     return products.find((p) => p.id === productId);
   },
 
-  addProduct(businessId: string, productData: Omit<Product, 'id' | 'businessId' | 'currentStock' | 'createdAt' | 'updatedAt' | 'totalSold'>, user: User): Product {
+  async addProduct(
+    businessId: string,
+    productData: Omit<Product, 'id' | 'businessId' | 'currentStock' | 'createdAt' | 'updatedAt' | 'totalSold'>,
+    user: User
+  ): Promise<Product> {
     const allProducts = this.getAllProductsRaw();
-    const productId = `PROD-${Date.now().toString(36).toUpperCase()}`;
+    const productId = `PROD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
     const openingStock = Number(productData.openingStock) || 0;
     const totalReceived = Number(productData.totalReceived) || 0;
@@ -1318,10 +1631,40 @@ export const db = {
     const totalSold = 0;
     const currentStock = openingStock + totalReceived + stockAdjustments - totalSold;
 
+    const business = this.getBusinessById(businessId);
+    const users = this.getUsers();
+    const authenticatedUid = user?.id || (user as any)?.uid || '';
+    const ownerUser = users.find((u) => u.id === (authenticatedUid || productData.ownerId) || u.businessId === businessId);
+    const resolvedOwnerId = authenticatedUid || productData.ownerId || business?.ownerId || '';
+    const resolvedBusinessName =
+      productData.businessName ||
+      business?.name ||
+      user?.businessName ||
+      ownerUser?.businessName ||
+      'Supermarket Store';
+
+    const isPublished =
+      productData.isPublished !== undefined
+        ? Boolean(productData.isPublished)
+        : productData.isPublic !== undefined
+        ? Boolean(productData.isPublic)
+        : true;
+    const isPublic = isPublished;
+
+    let safeImageUrl = productData.imageUrl || '';
+    if (safeImageUrl && safeImageUrl.startsWith('data:image/')) {
+      safeImageUrl = await compressImageDataUrl(safeImageUrl, 800, 800, 0.75);
+    }
+
     const newProduct: Product = {
       ...productData,
       id: productId,
       businessId,
+      ownerId: resolvedOwnerId,
+      businessName: resolvedBusinessName,
+      imageUrl: safeImageUrl,
+      isPublished,
+      isPublic,
       openingStock,
       totalReceived,
       totalSold,
@@ -1337,12 +1680,14 @@ export const db = {
     };
 
     allProducts.push(newProduct);
-    setToStorage(STORAGE_KEYS.PRODUCTS, allProducts);
+    this.setProductsInMemory(allProducts, true);
 
-    // Save directly to Cloud Firestore
-    setDoc(doc(firestoreDb, 'products', newProduct.id), newProduct).catch((err) =>
-      handleFirestoreError(err, OperationType.CREATE, `products/${newProduct.id}`)
-    );
+    // Save directly to Cloud Firestore immediately
+    try {
+      await setDoc(doc(firestoreDb, 'products', newProduct.id), newProduct);
+    } catch (err: any) {
+      handleFirestoreError(err, OperationType.CREATE, `products/${newProduct.id}`);
+    }
 
     // If opening stock > 0, log initial movement
     if (openingStock > 0) {
@@ -1371,10 +1716,14 @@ export const db = {
       details: `Added new product: ${newProduct.name} (SKU: ${newProduct.sku})`,
     });
 
+    // Notify listeners across app for instantaneous state updates
+    window.dispatchEvent(new CustomEvent('spm_storage_update', { detail: { key: STORAGE_KEYS.PRODUCTS } }));
+    window.dispatchEvent(new CustomEvent('spm_product_update', { detail: { product: newProduct } }));
+
     return newProduct;
   },
 
-  updateProduct(businessId: string, productId: string, updates: Partial<Product>, user: User): Product {
+  async updateProduct(businessId: string, productId: string, updates: Partial<Product>, user: User): Promise<Product> {
     const allProducts = this.getAllProductsRaw();
     const index = allProducts.findIndex((p) => p.id === productId && (p.businessId === businessId || user.role === 'super_admin'));
     if (index === -1) throw new Error('Product not found or access denied');
@@ -1388,9 +1737,39 @@ export const db = {
     // Strict formula: Current Stock = Opening Stock + Total Received + Stock Adjustments - Total Sold
     const currentStock = openingStock + totalReceived + stockAdjustments - totalSold;
 
+    const business = this.getBusinessById(businessId);
+    const users = this.getUsers();
+    const isPublished =
+      updates.isPublished !== undefined
+        ? Boolean(updates.isPublished)
+        : updates.isPublic !== undefined
+        ? Boolean(updates.isPublic)
+        : prev.isPublished ?? prev.isPublic ?? true;
+    const isPublic = isPublished;
+    const authenticatedUid = user?.id || (user as any)?.uid || '';
+    const ownerId = authenticatedUid || updates.ownerId || prev.ownerId || business?.ownerId || '';
+    const ownerUser = users.find((u) => u.id === (authenticatedUid || updates.ownerId || prev.ownerId) || u.businessId === businessId);
+    const resolvedBusinessName =
+      updates.businessName ||
+      prev.businessName ||
+      business?.name ||
+      user?.businessName ||
+      ownerUser?.businessName ||
+      'Supermarket Store';
+
+    let safeImageUrl = updates.imageUrl !== undefined ? updates.imageUrl : prev.imageUrl;
+    if (safeImageUrl && safeImageUrl.startsWith('data:image/')) {
+      safeImageUrl = await compressImageDataUrl(safeImageUrl, 800, 800, 0.75);
+    }
+
     allProducts[index] = {
       ...prev,
       ...updates,
+      ownerId,
+      businessName: resolvedBusinessName,
+      imageUrl: safeImageUrl,
+      isPublished,
+      isPublic,
       openingStock,
       totalReceived,
       totalSold,
@@ -1399,12 +1778,14 @@ export const db = {
       updatedAt: new Date().toISOString(),
     };
 
-    setToStorage(STORAGE_KEYS.PRODUCTS, allProducts);
+    this.setProductsInMemory(allProducts, true);
 
-    // Update in Cloud Firestore
-    setDoc(doc(firestoreDb, 'products', productId), allProducts[index], { merge: true }).catch((err) =>
-      handleFirestoreError(err, OperationType.UPDATE, `products/${productId}`)
-    );
+    // Update in Cloud Firestore immediately
+    try {
+      await setDoc(doc(firestoreDb, 'products', productId), allProducts[index], { merge: true });
+    } catch (err: any) {
+      handleFirestoreError(err, OperationType.UPDATE, `products/${productId}`);
+    }
 
     this.logAudit({
       businessId: prev.businessId,
@@ -1415,21 +1796,26 @@ export const db = {
       details: `Updated product details for ${prev.name} (ID: ${productId})`,
     });
 
+    window.dispatchEvent(new CustomEvent('spm_storage_update', { detail: { key: STORAGE_KEYS.PRODUCTS } }));
+    window.dispatchEvent(new CustomEvent('spm_product_update', { detail: { product: allProducts[index] } }));
+
     return allProducts[index];
   },
 
-  deleteProduct(businessId: string, productId: string, user: User): void {
+  async deleteProduct(businessId: string, productId: string, user: User): Promise<boolean> {
     let allProducts = this.getAllProductsRaw();
     const target = allProducts.find((p) => p.id === productId && (p.businessId === businessId || user.role === 'super_admin'));
     if (!target) throw new Error('Product not found');
 
     allProducts = allProducts.filter((p) => p.id !== productId);
-    setToStorage(STORAGE_KEYS.PRODUCTS, allProducts);
+    this.setProductsInMemory(allProducts, true);
 
-    // Delete from Cloud Firestore
-    deleteDoc(doc(firestoreDb, 'products', productId)).catch((err) =>
-      handleFirestoreError(err, OperationType.DELETE, `products/${productId}`)
-    );
+    // Permanently delete from Cloud Firestore
+    try {
+      await deleteDoc(doc(firestoreDb, 'products', productId));
+    } catch (err: any) {
+      handleFirestoreError(err, OperationType.DELETE, `products/${productId}`);
+    }
 
     this.logAudit({
       businessId: target.businessId,
@@ -1437,8 +1823,13 @@ export const db = {
       userName: user.name,
       userRole: user.role,
       action: 'DELETE_PRODUCT',
-      details: `Deleted product ${target.name} (SKU: ${target.sku})`,
+      details: `Permanently deleted product ${target.name} (SKU: ${target.sku})`,
     });
+
+    window.dispatchEvent(new CustomEvent('spm_storage_update', { detail: { key: STORAGE_KEYS.PRODUCTS } }));
+    window.dispatchEvent(new CustomEvent('spm_product_update', { detail: { productId } }));
+
+    return true;
   },
 
   archiveProduct(businessId: string, productId: string, user: User): Product {
@@ -1727,6 +2118,17 @@ export const db = {
     return newMovement;
   },
 
+  deleteMovement(id: string): boolean {
+    const all = getFromStorage<InventoryMovement[]>(STORAGE_KEYS.MOVEMENTS, INITIAL_MOVEMENTS);
+    const updated = all.filter((m) => m.id !== id);
+    setToStorage(STORAGE_KEYS.MOVEMENTS, updated, true);
+
+    deleteDoc(doc(firestoreDb, 'movements', id)).catch((err) =>
+      handleFirestoreError(err, OperationType.DELETE, `movements/${id}`)
+    );
+    return true;
+  },
+
   // Suppliers (Tenant-isolated)
   getSuppliers(businessId: string): Supplier[] {
     const all = getFromStorage<Supplier[]>(STORAGE_KEYS.SUPPLIERS, INITIAL_SUPPLIERS);
@@ -1748,7 +2150,7 @@ export const db = {
   ): Supplier {
     const all = getFromStorage<Supplier[]>(STORAGE_KEYS.SUPPLIERS, INITIAL_SUPPLIERS);
     const newSupplier: Supplier = {
-      id: `SUP-${Date.now().toString(36).toUpperCase()}`,
+      id: `SUP-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
       businessId,
       name: data.name,
       contactPerson: data.contactPerson || '',
@@ -1813,10 +2215,27 @@ export const db = {
   // Audit Logs
   getAuditLogs(businessId?: string | null): AuditLog[] {
     const all = getFromStorage<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
-    if (!businessId) {
-      return all.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const seenIds = new Set<string>();
+    const uniqueLogs: AuditLog[] = [];
+
+    for (let i = 0; i < all.length; i++) {
+      const log = all[i];
+      if (!log) continue;
+      const rawId = log.id || `LOG-${i}`;
+      if (seenIds.has(rawId)) {
+        const uniqueId = `${rawId}-${Math.random().toString(36).substring(2, 6).toUpperCase()}-${i}`;
+        uniqueLogs.push({ ...log, id: uniqueId });
+        seenIds.add(uniqueId);
+      } else {
+        seenIds.add(rawId);
+        uniqueLogs.push(log);
+      }
     }
-    return all
+
+    if (!businessId) {
+      return uniqueLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    }
+    return uniqueLogs
       .filter((l) => l.businessId === businessId)
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   },
@@ -1825,7 +2244,7 @@ export const db = {
     const all = getFromStorage<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
     const newLog: AuditLog = {
       ...data,
-      id: `LOG-${Date.now().toString(36).toUpperCase()}`,
+      id: `LOG-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
       timestamp: new Date().toISOString(),
     };
     all.unshift(newLog);
@@ -2022,6 +2441,8 @@ export const db = {
     customerPhone: string;
     customerEmail?: string;
     deliveryAddress: string;
+    zilla?: string;
+    thana?: string;
     customerNote?: string;
     paymentMethod?: 'cash_on_delivery' | 'mobile_banking' | 'card' | 'online';
     items: { productId: string; quantity: number }[];
@@ -2135,6 +2556,8 @@ export const db = {
         customerPhone: payload.customerPhone,
         customerEmail: payload.customerEmail || '',
         deliveryAddress: payload.deliveryAddress,
+        zilla: payload.zilla || '',
+        thana: payload.thana || '',
         customerNote: payload.customerNote || '',
         items: itemsList,
         productId: firstItem.productId,
@@ -2180,6 +2603,8 @@ export const db = {
           customerPhone: payload.customerPhone,
           customerEmail: payload.customerEmail || '',
           deliveryAddress: payload.deliveryAddress,
+          zilla: payload.zilla || '',
+          thana: payload.thana || '',
           customerNote: payload.customerNote || '',
           items: validatedItems,
           productId: validatedItems[0].productId,

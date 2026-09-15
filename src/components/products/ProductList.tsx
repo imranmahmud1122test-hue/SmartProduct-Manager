@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Package,
   Search,
-  Plus,
   Filter,
   Download,
   Printer,
@@ -26,6 +25,7 @@ import { Product, Business, User } from '../../types';
 import { formatCurrency, formatShortDate } from '../../utils/codeGenerators';
 import { printProductCatalog } from '../../utils/printHelper';
 import { useLanguage } from '../../context/LanguageContext';
+import { useToast } from '../../context/ToastContext';
 
 interface ProductListProps {
   businessId: string;
@@ -53,6 +53,7 @@ export const ProductList: React.FC<ProductListProps> = ({
   onOpenStockAdjustment,
 }) => {
   const { t } = useLanguage();
+  const { toast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
@@ -60,33 +61,75 @@ export const ProductList: React.FC<ProductListProps> = ({
   const [visibilityFilter, setVisibilityFilter] = useState<'ALL' | 'PUBLIC' | 'PRIVATE'>('ALL');
   const [sortBy, setSortBy] = useState<'name' | 'stock_asc' | 'stock_desc' | 'price_desc' | 'created'>('name');
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const loadProducts = () => {
+  const loadProducts = async () => {
+    // Immediate initial sync render from local cache
     const list = db.getProducts(businessId);
     setProducts(list);
+
+    // Direct Firestore query using businessId
+    if (businessId) {
+      try {
+        setIsRefreshing(true);
+        const liveProducts = await db.fetchProductsFromFirestore(businessId);
+        if (liveProducts && liveProducts.length > 0) {
+          setProducts(liveProducts);
+        } else {
+          setProducts(db.getProducts(businessId));
+        }
+      } catch (err: any) {
+        console.error('[ProductList] Firestore query error:', err);
+        const isPermission =
+          err?.code === 'permission-denied' ||
+          err?.message?.includes('permission-denied') ||
+          err?.message?.includes('Missing or insufficient permissions');
+
+        if (isPermission) {
+          toast.security(
+            `Unable to retrieve product inventory for store "${business?.name || businessId}". Access was rejected by Firestore security rules.`,
+            'Permission Denied'
+          );
+        }
+      } finally {
+        setIsRefreshing(false);
+      }
+    }
   };
 
   useEffect(() => {
     loadProducts();
 
-    const handleStorageUpdate = (e: any) => {
-      loadProducts();
+    const handleStorageUpdate = () => {
+      setProducts(db.getProducts(businessId));
     };
 
     window.addEventListener('spm_storage_update', handleStorageUpdate);
+    window.addEventListener('spm_product_update', handleStorageUpdate);
     return () => {
       window.removeEventListener('spm_storage_update', handleStorageUpdate);
+      window.removeEventListener('spm_product_update', handleStorageUpdate);
     };
   }, [businessId, dataVersion]);
 
   const currency = business?.currencySymbol || '৳';
   const categories = ['ALL', ...db.getCategories()];
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (productToDelete) {
-      db.deleteProduct(businessId, productToDelete.id, currentUser);
-      setProductToDelete(null);
-      loadProducts();
+      try {
+        setIsDeleting(true);
+        await db.deleteProduct(businessId, productToDelete.id, currentUser);
+        toast.success(`Product "${productToDelete.name}" was permanently deleted.`);
+        setProductToDelete(null);
+        await loadProducts();
+      } catch (err: any) {
+        console.error('Failed to delete product:', err);
+        toast.error(err?.message || 'Failed to delete product.');
+      } finally {
+        setIsDeleting(false);
+      }
     }
   };
 
@@ -99,8 +142,9 @@ export const ProductList: React.FC<ProductListProps> = ({
     if (stockFilter === 'LOW_STOCK' && (p.currentStock <= 0 || p.currentStock > p.minStockLevel)) return false;
     if (stockFilter === 'OUT_OF_STOCK' && p.currentStock > 0) return false;
 
-    if (visibilityFilter === 'PUBLIC' && !p.isPublic) return false;
-    if (visibilityFilter === 'PRIVATE' && p.isPublic) return false;
+    const isProdPublic = p.isPublished !== undefined ? p.isPublished : (p.isPublic ?? true);
+    if (visibilityFilter === 'PUBLIC' && !isProdPublic) return false;
+    if (visibilityFilter === 'PRIVATE' && isProdPublic) return false;
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -160,12 +204,7 @@ export const ProductList: React.FC<ProductListProps> = ({
       {/* Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
         <div>
-          <div className="flex items-center space-x-2">
-            <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
-              <Package className="w-5 h-5" />
-            </span>
-            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">{t('productCatalogTitle', 'Product Catalog & Inventory')}</h1>
-          </div>
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">{t('productCatalogTitle', 'Product Catalog & Inventory')}</h1>
           <p className="text-xs text-slate-500 mt-0.5">
             {t('productCatalogSubtitle', 'Manage product master data, pricing, live balances, QR barcodes, and stock movements.')}
           </p>
@@ -187,9 +226,9 @@ export const ProductList: React.FC<ProductListProps> = ({
           <button
             id="btn-add-new-product"
             onClick={onOpenAddProduct}
-            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center gap-1.5"
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center"
           >
-            <Plus className="w-4 h-4" /> {t('addProduct', 'Add Product')}
+            {t('addProduct', 'Add Product')}
           </button>
         </div>
       </div>
@@ -326,9 +365,9 @@ export const ProductList: React.FC<ProductListProps> = ({
                       {products.length === 0 && (
                         <button
                           onClick={onOpenAddProduct}
-                          className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md transition-all"
+                          className="inline-flex items-center justify-center px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md transition-all"
                         >
-                          <Plus className="w-4 h-4" /> Add Product Now
+                          Add Product Now
                         </button>
                       )}
                     </div>
@@ -485,25 +524,27 @@ export const ProductList: React.FC<ProductListProps> = ({
             </div>
 
             <h3 className="text-lg font-extrabold text-slate-900">
-              Delete Product: {productToDelete.name}?
+              Permanently Delete {productToDelete.name}?
             </h3>
 
             <p className="text-xs text-slate-600 leading-relaxed">
-              This product will be archived and removed from your active stock catalog. Historical sales records referencing this item will be safely preserved in your sales ledger.
+              Are you sure you want to permanently delete this product? This action will remove the record from Cloud Firestore and your local inventory database immediately. This action cannot be undone.
             </p>
 
             <div className="pt-2 flex items-center justify-end space-x-3">
               <button
-                onClick={() => setProductToDelete(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl"
+                onClick={() => !isDeleting && setProductToDelete(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 font-semibold text-xs rounded-xl transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteConfirm}
-                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-600/20"
+                disabled={isDeleting}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
               >
-                Confirm Delete
+                {isDeleting ? 'Deleting...' : 'Permanently Delete'}
               </button>
             </div>
           </div>

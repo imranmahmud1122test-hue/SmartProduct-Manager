@@ -13,7 +13,8 @@ import {
   Filter,
   CheckCircle2,
   PieChart,
-  ShoppingBag
+  ShoppingBag,
+  Trash2
 } from 'lucide-react';
 import { db } from '../../services/storage';
 import { Product, Sale, InventoryMovement, Business } from '../../types';
@@ -32,14 +33,27 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ businessId, business }
   const [products, setProducts] = useState<Product[]>([]);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
 
-  useEffect(() => {
+  const reloadData = () => {
     const sls = db.getSales(businessId);
     setSales(sls);
     const prods = db.getProducts(businessId);
     setProducts(prods);
     const movs = db.getMovements(businessId);
     setMovements(movs);
+  };
+
+  useEffect(() => {
+    reloadData();
+    window.addEventListener('spm_storage_update', reloadData);
+    return () => window.removeEventListener('spm_storage_update', reloadData);
   }, [businessId]);
+
+  const handleDeleteMovement = (movId: string, productName: string) => {
+    if (window.confirm(`Are you sure you want to delete this stock movement record for "${productName}"?`)) {
+      db.deleteMovement(movId);
+      reloadData();
+    }
+  };
 
   const currency = business?.currencySymbol || '৳';
 
@@ -447,6 +461,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ businessId, business }
                   <th className="py-3 px-4 text-center">New Balance</th>
                   <th className="py-3 px-4">Reference / Order #</th>
                   <th className="py-3 px-4">Operator</th>
+                  <th className="py-3 px-4 text-center">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -476,6 +491,15 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ businessId, business }
                     <td className="py-3 px-4 text-center font-extrabold text-slate-900">{m.newStock}</td>
                     <td className="py-3 px-4 font-mono text-slate-500">{m.referenceId || 'N/A'}</td>
                     <td className="py-3 px-4 text-slate-600">{m.performedBy}</td>
+                    <td className="py-3 px-4 text-center">
+                      <button
+                        onClick={() => handleDeleteMovement(m.id, m.productName)}
+                        title="Delete Stock Movement Record"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors inline-flex items-center justify-center"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

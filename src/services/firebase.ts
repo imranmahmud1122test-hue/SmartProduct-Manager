@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import {
+  initializeFirestore,
   getFirestore,
   collection,
   doc,
@@ -11,28 +12,42 @@ import {
   onSnapshot,
   query,
   where,
+  limit,
   getDocFromServer
 } from 'firebase/firestore';
 import bundledConfig from '../../firebase-applet-config.json';
+import { emitGlobalToast } from '../context/ToastContext';
 
-// Determine environment configuration
-const isProd = import.meta.env.PROD || process.env.NODE_ENV === 'production';
-
-// Prioritize VITE_FIREBASE_* environment variables (set in Render)
+// Prioritize VITE_FIREBASE_* environment variables (set in Render) with fallback to bundled config
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || (!isProd ? bundledConfig.apiKey : ''),
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || (!isProd ? bundledConfig.authDomain : ''),
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || (!isProd ? bundledConfig.projectId : ''),
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || (!isProd ? bundledConfig.storageBucket : ''),
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || (!isProd ? bundledConfig.messagingSenderId : ''),
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || (!isProd ? bundledConfig.appId : ''),
-  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || (!isProd ? bundledConfig.firestoreDatabaseId : ''),
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || bundledConfig.apiKey,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || bundledConfig.authDomain,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || bundledConfig.projectId,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || bundledConfig.storageBucket,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || bundledConfig.messagingSenderId,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || bundledConfig.appId,
+  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || bundledConfig.firestoreDatabaseId,
 };
 
 export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 export const auth = getAuth(app);
-export const firestoreDb = getFirestore(app, firebaseConfig.firestoreDatabaseId || undefined);
+
+// Use forced long-polling to ensure reliable connectivity across network firewalls, proxies, and preview sandboxes without initial WebSocket attempts
+let firestoreInstance;
+try {
+  firestoreInstance = initializeFirestore(
+    app,
+    {
+      experimentalForceLongPolling: true,
+    },
+    firebaseConfig.firestoreDatabaseId || undefined
+  );
+} catch {
+  firestoreInstance = getFirestore(app, firebaseConfig.firestoreDatabaseId || undefined);
+}
+
+export const firestoreDb = firestoreInstance;
 export const db = firestoreDb; // Convenient alias
 
 console.log(`[Firebase Initialized] Project: ${firebaseConfig.projectId} | Database: ${firebaseConfig.firestoreDatabaseId || '(default)'} | Source: ${import.meta.env.VITE_FIREBASE_PROJECT_ID ? 'VITE_FIREBASE_* (Render/Env)' : 'Bundled Config'}`);
@@ -57,8 +72,16 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errMsg = error instanceof Error ? error.message : String(error);
+  const isUnavailable = errMsg.includes('unavailable') || errMsg.includes('offline') || errMsg.includes('Failed to get document');
+  const isPermissionDenied = errMsg.includes('permission-denied') || 
+                             errMsg.includes('Missing or insufficient permissions') || 
+                             errMsg.includes('PERMISSION_DENIED') ||
+                             errMsg.includes('security rule') ||
+                             errMsg.includes('insufficient permissions');
+  
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errMsg,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -66,22 +89,30 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path,
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
+
+  if (isPermissionDenied) {
+    console.error('[Firestore Security Restriction]:', JSON.stringify(errInfo));
+    emitGlobalToast(
+      'security',
+      'Firestore Security Rule Restriction',
+      `Access to '${path || 'collection'}' was denied by Firestore security rules (${operationType.toUpperCase()}). Please verify user role and tenant permissions.`
+    );
+  } else if (isUnavailable) {
+    console.warn(`[Firestore Offline/Unavailable] Falling back to local storage cache for ${path || 'collection'}:`, errMsg);
+  } else {
+    console.error('Firestore Error: ', JSON.stringify(errInfo));
+  }
 }
 
 // Test connection on boot
 export async function testFirestoreConnection(): Promise<boolean> {
   try {
-    await getDocFromServer(doc(firestoreDb, 'test', 'connection'));
-    console.log('[Firestore] Live cloud connection verified successfully.');
+    const q = query(collection(firestoreDb, 'products'), limit(1));
+    await getDocs(q);
     return true;
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('[Firestore] Client is offline. Using local persistence cache.');
-      return false;
-    }
-    // Expected on fresh collection without pre-existing doc
-    return true;
+    console.warn('[Firestore] Initial connection probe notice:', error);
+    return false;
   }
 }
 

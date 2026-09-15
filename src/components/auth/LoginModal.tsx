@@ -143,15 +143,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     onClose();
   };
 
-  const autofillDemo = (type: 'metro' | 'valley') => {
+  const autofillDemo = () => {
     setError(null);
-    if (type === 'metro') {
-      setEmail('owner@metro.com');
-      setPassword('metro123');
-    } else if (type === 'valley') {
-      setEmail('owner@freshvalley.com');
-      setPassword('valley123');
-    }
+    setEmail('owner@metro.com');
+    setPassword('metro123');
   };
 
   return (
@@ -260,45 +255,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-
-          {/* Quick Demo Accounts */}
-          <div className="pt-1">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-emerald-500" />
-                Store Demo Accounts:
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-              <button
-                type="button"
-                id="btn-autofill-metro"
-                onClick={() => autofillDemo('metro')}
-                className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 rounded-xl border border-emerald-200 font-medium text-left transition-all"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold block text-emerald-900">Metro Owner</span>
-                  <span className="text-[9px] font-mono text-emerald-700 bg-emerald-200/60 px-1.5 py-0.2 rounded">SHOP-001</span>
-                </div>
-                <span className="text-[11px] text-emerald-700 block mt-0.5">owner@metro.com</span>
-                <span className="text-[10px] text-emerald-600 block">Full Store & POS Access</span>
-              </button>
-              <button
-                type="button"
-                id="btn-autofill-valley"
-                onClick={() => autofillDemo('valley')}
-                className="px-3 py-2 bg-teal-50 hover:bg-teal-100 text-teal-950 rounded-xl border border-teal-200 font-medium text-left transition-all"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold block text-teal-900">Fresh Valley</span>
-                  <span className="text-[9px] font-mono text-teal-700 bg-teal-200/60 px-1.5 py-0.2 rounded">SHOP-002</span>
-                </div>
-                <span className="text-[11px] text-teal-700 block mt-0.5">owner@freshvalley.com</span>
-                <span className="text-[10px] text-teal-600 block">Full Store & POS Access</span>
               </button>
             </div>
           </div>

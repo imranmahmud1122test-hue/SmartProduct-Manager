@@ -990,8 +990,8 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           </div>
 
           <div className="space-y-2 max-h-72 overflow-y-auto font-mono text-xs">
-            {logs.slice(0, 15).map((log) => (
-              <div key={log.id} className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+            {logs.slice(0, 15).map((log, idx) => (
+              <div key={`${log.id}-${idx}`} className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
                 <div>
                   <span className="font-bold text-slate-900 uppercase">[{log.action}]</span>{' '}
                   <span className="text-slate-600">{log.details}</span>{' '}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Settings,
   Building2,
@@ -12,9 +12,13 @@ import {
   Plus,
   UserCheck,
   X,
-  AlertCircle
+  AlertCircle,
+  Upload,
+  Image as ImageIcon,
+  Trash2
 } from 'lucide-react';
 import { db } from '../../services/storage';
+import { compressFile, compressImageDataUrl } from '../../utils/imageCompressor';
 import { Business, User } from '../../types';
 import { useLanguage, LanguageSwitcher } from '../../context/LanguageContext';
 
@@ -33,6 +37,7 @@ export const BusinessSettingsView: React.FC<BusinessSettingsViewProps> = ({
 }) => {
   const { t, language, setLanguage } = useLanguage();
   const [name, setName] = useState('');
+  const [logoUrl, setLogoUrl] = useState('');
   const [currencySymbol, setCurrencySymbol] = useState('৳');
   const [taxRate, setTaxRate] = useState<number>(5.0);
   const [phone, setPhone] = useState('');
@@ -41,6 +46,7 @@ export const BusinessSettingsView: React.FC<BusinessSettingsViewProps> = ({
   const [isPublicStoreEnabled, setIsPublicStoreEnabled] = useState(true);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   // Staff management
   const [staffList, setStaffList] = useState<User[]>([]);
@@ -53,6 +59,7 @@ export const BusinessSettingsView: React.FC<BusinessSettingsViewProps> = ({
   useEffect(() => {
     if (business) {
       setName(business.name);
+      setLogoUrl(business.logoUrl || '');
       setCurrencySymbol(business.currencySymbol || '৳');
       setTaxRate(business.taxRate ?? 5.0);
       setPhone(business.phone || '');
@@ -64,9 +71,47 @@ export const BusinessSettingsView: React.FC<BusinessSettingsViewProps> = ({
     // Load staff
     const users = db.getUsers().filter((u) => u.businessId === businessId);
     setStaffList(users);
-  }, [business, businessId]);
+  }, [
+    business?.id,
+    business?.name,
+    business?.logoUrl,
+    business?.currencySymbol,
+    business?.taxRate,
+    business?.phone,
+    business?.email,
+    business?.address,
+    business?.isPublicStoreEnabled,
+    businessId,
+  ]);
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        setError('Logo image file must be smaller than 10MB');
+        return;
+      }
+      try {
+        const compressed = await compressFile(file, 600, 600, 0.75);
+        setLogoUrl(compressed);
+      } catch (_) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setLogoUrl(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  };
+
+  const handleRemoveLogo = () => {
+    setLogoUrl('');
+    if (logoInputRef.current) {
+      logoInputRef.current.value = '';
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSaveSuccess(false);
@@ -77,8 +122,10 @@ export const BusinessSettingsView: React.FC<BusinessSettingsViewProps> = ({
     }
 
     try {
+      const finalLogoUrl = logoUrl ? await compressImageDataUrl(logoUrl, 600, 600, 0.75) : undefined;
       const updated = db.updateBusiness(businessId, {
         name: name.trim(),
+        logoUrl: finalLogoUrl,
         currencySymbol: currencySymbol.trim() || '৳',
         taxRate: Number(taxRate) || 0,
         phone: phone.trim(),
@@ -167,6 +214,71 @@ export const BusinessSettingsView: React.FC<BusinessSettingsViewProps> = ({
               <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full font-semibold text-[11px] flex items-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5" /> Tenant Isolated
               </span>
+            </div>
+
+            {/* Business Logo Upload & Setting */}
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+              <label className="block text-xs font-bold text-slate-700 mb-2">Business / Store Logo</label>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                {/* Logo Preview */}
+                <div className="relative shrink-0">
+                  {logoUrl ? (
+                    <img
+                      src={logoUrl}
+                      alt="Store Logo Preview"
+                      className="w-16 h-16 rounded-2xl object-cover border-2 border-emerald-500 shadow-sm"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-black text-2xl flex items-center justify-center border border-slate-200 shadow-xs">
+                      {name ? name.charAt(0).toUpperCase() : 'S'}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1 space-y-2 w-full">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="file"
+                      ref={logoInputRef}
+                      onChange={handleLogoUpload}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => logoInputRef.current?.click()}
+                      className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Upload Logo</span>
+                    </button>
+
+                    {logoUrl && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveLogo}
+                        className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remove Logo</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div>
+                    <input
+                      type="url"
+                      placeholder="Or paste direct logo image URL (e.g., https://...)"
+                      value={logoUrl}
+                      onChange={(e) => setLogoUrl(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-700 focus:ring-2 focus:ring-emerald-500 focus:bg-white"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    If no logo is set, your store will automatically use your initial letter as the fallback.
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div>
