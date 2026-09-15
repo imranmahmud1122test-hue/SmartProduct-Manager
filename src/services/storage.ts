@@ -8,7 +8,12 @@ import {
   Supplier,
   AuditLog,
   SupportSettings,
-  SupportTicket
+  SupportTicket,
+  Order,
+  OrderItem,
+  OrderStatus,
+  OrderStatusHistory,
+  AdminAnalytics
 } from '../types';
 
 const STORAGE_KEYS = {
@@ -23,6 +28,7 @@ const STORAGE_KEYS = {
   CURRENT_USER: 'ssm_current_user_v2',
   SUPPORT_SETTINGS: 'ssm_support_settings_v2',
   SUPPORT_TICKETS: 'ssm_support_tickets_v2',
+  ORDERS: 'ssm_orders_v2',
 };
 
 const DEFAULT_SUPPORT_SETTINGS: SupportSettings = {
@@ -91,17 +97,6 @@ const INITIAL_USERS: User[] = [
     businessName: 'Metro Supermarket & Mart',
     phone: '+880 1812-345678',
     createdAt: '2026-02-10T09:00:00Z',
-    status: 'active',
-  },
-  {
-    id: 'USR-METRO-CASHIER',
-    email: 'cashier@metro.com',
-    name: 'Rahim Ahmed (Cashier)',
-    role: 'cashier',
-    businessId: 'SHOP-001',
-    businessName: 'Metro Supermarket & Mart',
-    phone: '+880 1912-345679',
-    createdAt: '2026-02-15T09:00:00Z',
     status: 'active',
   },
   {
@@ -647,6 +642,142 @@ const INITIAL_AUDIT_LOGS: AuditLog[] = [
   },
 ];
 
+const INITIAL_ORDERS: Order[] = [
+  {
+    id: 'ORD-2026-1001',
+    orderId: 'ORD-2026-1001',
+    customerName: 'Tanvir Rahman',
+    customerPhone: '+880 1711-223344',
+    customerEmail: 'tanvir@gmail.com',
+    deliveryAddress: 'House 14, Road 5, Block C, Banani, Dhaka',
+    customerNote: 'Please ring bell upon arrival.',
+    items: [
+      {
+        productId: 'PROD-001',
+        productNameSnapshot: 'Fresh Whole Milk 1 Gallon',
+        sku: 'MILK-WHL-1G',
+        barcode: '890103001',
+        unitPriceSnapshot: 4.29,
+        costPriceSnapshot: 2.80,
+        quantity: 2,
+        subtotal: 8.58,
+        unit: 'bottle',
+        ownerId: 'USR-METRO',
+        ownerNameSnapshot: 'David Harris',
+        storeId: 'SHOP-001',
+        storeNameSnapshot: 'Metro Supermarket & Mart',
+        imageUrl: 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=400&auto=format&fit=crop&q=80',
+      },
+      {
+        productId: 'PROD-002',
+        productNameSnapshot: 'Basmati Premium Long Grain Rice 5kg',
+        sku: 'RICE-BAS-5KG',
+        barcode: '890103002',
+        unitPriceSnapshot: 15.99,
+        costPriceSnapshot: 9.50,
+        quantity: 1,
+        subtotal: 15.99,
+        unit: 'packet',
+        ownerId: 'USR-METRO',
+        ownerNameSnapshot: 'David Harris',
+        storeId: 'SHOP-001',
+        storeNameSnapshot: 'Metro Supermarket & Mart',
+        imageUrl: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400&auto=format&fit=crop&q=80',
+      }
+    ],
+    productId: 'PROD-001',
+    productNameSnapshot: 'Fresh Whole Milk 1 Gallon (+1 other)',
+    ownerId: 'USR-METRO',
+    ownerNameSnapshot: 'David Harris',
+    storeId: 'SHOP-001',
+    storeNameSnapshot: 'Metro Supermarket & Mart',
+    quantity: 3,
+    unitPriceSnapshot: 4.29,
+    subtotal: 24.57,
+    deliveryCharge: 60,
+    totalAmount: 84.57,
+    orderStatus: 'Processing',
+    paymentStatus: 'cash_on_delivery',
+    paymentMethod: 'cash_on_delivery',
+    statusHistory: [
+      {
+        changedBy: 'Customer / Online Marketplace',
+        changedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+        previousStatus: 'Pending',
+        newStatus: 'Pending',
+        notes: 'Order placed via Public Marketplace',
+      },
+      {
+        changedBy: 'David Harris (Store Owner)',
+        changedAt: new Date(Date.now() - 86400000 * 1).toISOString(),
+        previousStatus: 'Pending',
+        newStatus: 'Processing',
+        notes: 'Order confirmed and packed in warehouse.',
+      }
+    ],
+    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 1).toISOString(),
+  },
+  {
+    id: 'ORD-2026-1002',
+    orderId: 'ORD-2026-1002',
+    customerName: 'Farhana Akter',
+    customerPhone: '+880 1819-998877',
+    customerEmail: 'farhana.akter@outlook.com',
+    deliveryAddress: 'Apartment 4B, Road 11, Dhanmondi, Dhaka',
+    customerNote: 'Leave at front security desk.',
+    items: [
+      {
+        productId: 'PROD-008',
+        productNameSnapshot: 'Fresh Farm Spinach Leaves 500g',
+        sku: 'VEG-SPN-500G',
+        barcode: '890103008',
+        unitPriceSnapshot: 1.99,
+        costPriceSnapshot: 0.95,
+        quantity: 3,
+        subtotal: 5.97,
+        unit: 'pack',
+        ownerId: 'USR-VALLEY',
+        ownerNameSnapshot: 'Sarah Jenkins',
+        storeId: 'SHOP-002',
+        storeNameSnapshot: 'Fresh Valley Organic Market',
+        imageUrl: 'https://images.unsplash.com/photo-1576045057995-568f588f82fb?w=400&auto=format&fit=crop&q=80',
+      }
+    ],
+    productId: 'PROD-008',
+    productNameSnapshot: 'Fresh Farm Spinach Leaves 500g',
+    ownerId: 'USR-VALLEY',
+    ownerNameSnapshot: 'Sarah Jenkins',
+    storeId: 'SHOP-002',
+    storeNameSnapshot: 'Fresh Valley Organic Market',
+    quantity: 3,
+    unitPriceSnapshot: 1.99,
+    subtotal: 5.97,
+    deliveryCharge: 50,
+    totalAmount: 55.97,
+    orderStatus: 'Delivered',
+    paymentStatus: 'paid',
+    paymentMethod: 'mobile_banking',
+    statusHistory: [
+      {
+        changedBy: 'Customer / Online Marketplace',
+        changedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+        previousStatus: 'Pending',
+        newStatus: 'Pending',
+      },
+      {
+        changedBy: 'Sarah Jenkins (Store Owner)',
+        changedAt: new Date(Date.now() - 86400000 * 1).toISOString(),
+        previousStatus: 'Processing',
+        newStatus: 'Delivered',
+        notes: 'Delivered safely to Dhanmondi customer.',
+      }
+    ],
+    createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 1).toISOString(),
+  }
+];
+
 // Helper to safely read and write to LocalStorage
 function getFromStorage<T>(key: string, defaultValue: T): T {
   try {
@@ -665,8 +796,17 @@ function getFromStorage<T>(key: string, defaultValue: T): T {
 function setToStorage<T>(key: string, value: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('spm_storage_update', { detail: { key, timestamp: Date.now() } }));
+    }
   } catch (err) {
     console.error(`Error saving ${key} to storage:`, err);
+  }
+}
+
+export function notifyStorageUpdate(key?: string): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('spm_storage_update', { detail: { key, timestamp: Date.now() } }));
   }
 }
 
@@ -730,6 +870,9 @@ export function initializeStorage(): void {
   if (!localStorage.getItem(STORAGE_KEYS.AUDIT_LOGS)) {
     localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(INITIAL_AUDIT_LOGS));
   }
+  if (!localStorage.getItem(STORAGE_KEYS.ORDERS)) {
+    localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(INITIAL_ORDERS));
+  }
 }
 
 // Data Access Layer (Repository)
@@ -748,7 +891,12 @@ export const db = {
   },
 
   getUsers(): User[] {
-    return getFromStorage<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+    const list = getFromStorage<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+    const filtered = list.filter((u) => u.email.toLowerCase() !== 'cashier@metro.com' && u.id !== 'USR-METRO-CASHIER');
+    if (filtered.length !== list.length) {
+      setToStorage(STORAGE_KEYS.USERS, filtered);
+    }
+    return filtered;
   },
 
   addUser(userData: {
@@ -1559,7 +1707,11 @@ export const db = {
 
   // Helper categories
   getCategories(): string[] {
-    return [
+    const baseCategories = [
+      'Electronics & Gadgets',
+      'Computers & Accessories',
+      'Mobile & Audio',
+      'Home & Kitchen Appliances',
       'Dairy & Eggs',
       'Fresh Produce',
       'Bakery',
@@ -1572,7 +1724,16 @@ export const db = {
       'Personal Care & Health',
       'Baby & Child Care',
       'Pet Supplies',
+      'Clothing & Apparel',
+      'General / Other',
     ];
+    try {
+      const allProducts = this.getAllProductsRaw();
+      const existingProductCats = allProducts.map((p) => p.category).filter(Boolean);
+      return Array.from(new Set([...baseCategories, ...existingProductCats]));
+    } catch {
+      return baseCategories;
+    }
   },
 
   // Support Settings & Tickets
@@ -1640,5 +1801,560 @@ export const db = {
     localStorage.setItem(STORAGE_KEYS.SUPPORT_TICKETS, JSON.stringify(tickets));
     this.addAuditLog('SUPPORT_TICKET_STATUS_CHANGED', `Ticket ${id} status changed to ${status}`);
     return tickets[idx];
+  },
+
+  // ==========================================
+  // MULTI-VENDOR MARKETPLACE ORDER MANAGEMENT
+  // ==========================================
+
+  getOrders(): Order[] {
+    const list = getFromStorage<Order[]>(STORAGE_KEYS.ORDERS, INITIAL_ORDERS);
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  getOrdersByOwner(ownerId: string, businessId?: string): Order[] {
+    const all = this.getOrders();
+    return all.filter((o) => {
+      // Direct owner or store match
+      if (o.ownerId === ownerId) return true;
+      if (businessId && o.storeId === businessId) return true;
+      // Item level match
+      if (o.items && o.items.some((it) => it.ownerId === ownerId || (businessId && it.storeId === businessId))) return true;
+      return false;
+    });
+  },
+
+  getOrderById(orderId: string): Order | undefined {
+    const all = this.getOrders();
+    return all.find((o) => o.id === orderId || o.orderId === orderId);
+  },
+
+  trackOrder(orderId: string, phone: string): Order | null {
+    const cleanId = orderId.trim().toUpperCase();
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    const all = this.getOrders();
+    const matched = all.find((o) => {
+      const matchId = o.id.toUpperCase() === cleanId || o.orderId.toUpperCase() === cleanId;
+      if (!matchId) return false;
+      const orderPhoneClean = o.customerPhone.replace(/[^0-9]/g, '');
+      // Match last 8 digits or full phone to handle country code variations
+      return (
+        orderPhoneClean === cleanPhone ||
+        (cleanPhone.length >= 7 && orderPhoneClean.endsWith(cleanPhone.slice(-7))) ||
+        (orderPhoneClean.length >= 7 && cleanPhone.endsWith(orderPhoneClean.slice(-7)))
+      );
+    });
+    return matched || null;
+  },
+
+  createOrder(payload: {
+    customerName: string;
+    customerPhone: string;
+    customerEmail?: string;
+    deliveryAddress: string;
+    customerNote?: string;
+    paymentMethod?: 'cash_on_delivery' | 'mobile_banking' | 'card' | 'online';
+    items: { productId: string; quantity: number }[];
+  }): { masterOrder: Order; vendorOrders: Order[] } {
+    if (!payload.items || payload.items.length === 0) {
+      throw new Error('Order must contain at least one item');
+    }
+
+    const allProducts = this.getAllProductsRaw();
+    const allBusinesses = this.getBusinesses();
+    const allUsers = this.getUsers();
+    const bizMap = new Map<string, Business>(allBusinesses.map((b) => [b.id, b]));
+    const userMap = new Map<string, User>(allUsers.map((u) => [u.id, u]));
+
+    // Validate stock and build snapshots
+    const validatedItems: OrderItem[] = [];
+    for (const reqItem of payload.items) {
+      const p = allProducts.find((prod) => prod.id === reqItem.productId);
+      if (!p) {
+        throw new Error(`Product not found (ID: ${reqItem.productId})`);
+      }
+      if (p.currentStock < reqItem.quantity) {
+        throw new Error(`Insufficient stock for "${p.name}". Available: ${p.currentStock}, Requested: ${reqItem.quantity}`);
+      }
+
+      const biz = bizMap.get(p.businessId);
+      const ownerUser = biz ? userMap.get(biz.ownerId) || allUsers.find((u) => u.businessId === biz.id) : null;
+      const ownerId = p.ownerId || biz?.ownerId || ownerUser?.id || 'USR-METRO';
+      const ownerName = ownerUser?.name || biz?.ownerName || 'Store Owner';
+      const storeName = biz?.name || 'Supermarket';
+
+      validatedItems.push({
+        productId: p.id,
+        productNameSnapshot: p.name,
+        sku: p.sku,
+        barcode: p.barcode,
+        unitPriceSnapshot: p.sellingPrice,
+        costPriceSnapshot: p.purchasePrice,
+        quantity: reqItem.quantity,
+        subtotal: p.sellingPrice * reqItem.quantity,
+        unit: p.unit,
+        ownerId,
+        ownerNameSnapshot: ownerName,
+        storeId: p.businessId,
+        storeNameSnapshot: storeName,
+        imageUrl: p.imageUrl,
+      });
+    }
+
+    // Atomically decrement stock and log inventory movements
+    for (const reqItem of payload.items) {
+      const pIndex = allProducts.findIndex((prod) => prod.id === reqItem.productId);
+      if (pIndex !== -1) {
+        const prod = allProducts[pIndex];
+        const prevStock = prod.currentStock;
+        prod.totalSold = (prod.totalSold || 0) + reqItem.quantity;
+        prod.currentStock = prod.openingStock + prod.totalReceived + prod.stockAdjustments - prod.totalSold;
+        prod.updatedAt = new Date().toISOString();
+
+        // Log movement
+        this.logMovement({
+          businessId: prod.businessId,
+          productId: prod.id,
+          productName: prod.name,
+          sku: prod.sku,
+          type: 'ONLINE_ORDER',
+          quantity: reqItem.quantity,
+          previousStock: prevStock,
+          newStock: prod.currentStock,
+          unitCost: prod.purchasePrice,
+          referenceId: `ORD-${Date.now().toString().slice(-6)}`,
+          notes: `Public marketplace customer order placed by ${payload.customerName}`,
+          performedBy: payload.customerName,
+        });
+      }
+    }
+    setToStorage(STORAGE_KEYS.PRODUCTS, allProducts);
+
+    // Group items by vendor/store
+    const itemsByStore = new Map<string, OrderItem[]>();
+    for (const it of validatedItems) {
+      const groupKey = it.storeId;
+      if (!itemsByStore.has(groupKey)) {
+        itemsByStore.set(groupKey, []);
+      }
+      itemsByStore.get(groupKey)!.push(it);
+    }
+
+    const timestamp = new Date().toISOString();
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const masterOrderId = `ORD-${new Date().getFullYear()}-${randomSuffix}`;
+    const allStoredOrders = this.getOrders();
+    const vendorOrders: Order[] = [];
+
+    // Create sub-orders for each store vendor
+    let subOrderIndex = 1;
+    for (const [storeId, itemsList] of itemsByStore.entries()) {
+      const firstItem = itemsList[0];
+      const subtotal = itemsList.reduce((acc, it) => acc + it.subtotal, 0);
+      const totalQty = itemsList.reduce((acc, it) => acc + it.quantity, 0);
+      const biz = bizMap.get(storeId);
+      const deliveryCharge = biz?.deliveryCharge !== undefined ? biz.deliveryCharge : 60;
+      const totalAmount = subtotal + deliveryCharge;
+      const subOrderId = itemsByStore.size > 1 ? `${masterOrderId}-V${subOrderIndex}` : masterOrderId;
+
+      const vendorOrder: Order = {
+        id: subOrderId,
+        orderId: subOrderId,
+        parentOrderId: itemsByStore.size > 1 ? masterOrderId : undefined,
+        customerName: payload.customerName,
+        customerPhone: payload.customerPhone,
+        customerEmail: payload.customerEmail || '',
+        deliveryAddress: payload.deliveryAddress,
+        customerNote: payload.customerNote || '',
+        items: itemsList,
+        productId: firstItem.productId,
+        productNameSnapshot: itemsList.length === 1 ? firstItem.productNameSnapshot : `${firstItem.productNameSnapshot} (+${itemsList.length - 1} more)`,
+        ownerId: firstItem.ownerId,
+        ownerNameSnapshot: firstItem.ownerNameSnapshot || 'Store Owner',
+        storeId: storeId,
+        storeNameSnapshot: firstItem.storeNameSnapshot,
+        quantity: totalQty,
+        unitPriceSnapshot: firstItem.unitPriceSnapshot,
+        subtotal,
+        deliveryCharge,
+        totalAmount,
+        orderStatus: 'Pending',
+        paymentStatus: payload.paymentMethod === 'cash_on_delivery' ? 'cash_on_delivery' : 'pending',
+        paymentMethod: payload.paymentMethod || 'cash_on_delivery',
+        statusHistory: [
+          {
+            changedBy: `${payload.customerName} (Customer)`,
+            changedAt: timestamp,
+            previousStatus: 'Pending',
+            newStatus: 'Pending',
+            notes: 'Order placed via Public Marketplace',
+          },
+        ],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+
+      vendorOrders.push(vendorOrder);
+      allStoredOrders.unshift(vendorOrder);
+      subOrderIndex++;
+    }
+
+    // Master order representation
+    const masterOrder: Order = vendorOrders.length === 1
+      ? vendorOrders[0]
+      : {
+          id: masterOrderId,
+          orderId: masterOrderId,
+          childOrderIds: vendorOrders.map((vo) => vo.orderId),
+          customerName: payload.customerName,
+          customerPhone: payload.customerPhone,
+          customerEmail: payload.customerEmail || '',
+          deliveryAddress: payload.deliveryAddress,
+          customerNote: payload.customerNote || '',
+          items: validatedItems,
+          productId: validatedItems[0].productId,
+          productNameSnapshot: `${validatedItems[0].productNameSnapshot} and ${validatedItems.length - 1} items from ${itemsByStore.size} stores`,
+          ownerId: 'MULTI',
+          ownerNameSnapshot: 'Multi-Store Marketplace Order',
+          storeId: 'MULTI',
+          storeNameSnapshot: 'Multi-Store Order',
+          quantity: validatedItems.reduce((acc, it) => acc + it.quantity, 0),
+          unitPriceSnapshot: validatedItems[0].unitPriceSnapshot,
+          subtotal: validatedItems.reduce((acc, it) => acc + it.subtotal, 0),
+          deliveryCharge: vendorOrders.reduce((acc, vo) => acc + vo.deliveryCharge, 0),
+          totalAmount: vendorOrders.reduce((acc, vo) => acc + vo.totalAmount, 0),
+          orderStatus: 'Pending',
+          paymentStatus: payload.paymentMethod === 'cash_on_delivery' ? 'cash_on_delivery' : 'pending',
+          paymentMethod: payload.paymentMethod || 'cash_on_delivery',
+          statusHistory: [
+            {
+              changedBy: `${payload.customerName} (Customer)`,
+              changedAt: timestamp,
+              previousStatus: 'Pending',
+              newStatus: 'Pending',
+              notes: 'Master order created across multiple vendor stores',
+            },
+          ],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        };
+
+    setToStorage(STORAGE_KEYS.ORDERS, allStoredOrders);
+
+    this.logAudit({
+      businessId: vendorOrders.length === 1 ? vendorOrders[0].storeId : null,
+      userId: 'PUBLIC_CUSTOMER',
+      userName: payload.customerName,
+      userRole: 'public_visitor',
+      action: 'PLACE_ORDER',
+      details: `New order placed: ${masterOrderId} for $${masterOrder.totalAmount.toFixed(2)} by ${payload.customerName}`,
+    });
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('spm_order_update', { detail: { orderId: masterOrderId } }));
+    }
+
+    return { masterOrder, vendorOrders };
+  },
+
+  updateOrderStatus(
+    orderId: string,
+    newStatus: OrderStatus,
+    changedBy: string,
+    userRole?: string,
+    notes?: string
+  ): Order | null {
+    const orders = this.getOrders();
+    const idx = orders.findIndex((o) => o.id === orderId || o.orderId === orderId);
+    if (idx === -1) return null;
+
+    const currentOrder = orders[idx];
+    const prevStatus = currentOrder.orderStatus;
+    if (prevStatus === newStatus) return currentOrder;
+
+    // Handle stock restoration on cancellation
+    if (newStatus === 'Cancelled' && prevStatus !== 'Cancelled') {
+      const allProducts = this.getAllProductsRaw();
+      for (const item of currentOrder.items) {
+        const pIdx = allProducts.findIndex((p) => p.id === item.productId);
+        if (pIdx !== -1) {
+          const prod = allProducts[pIdx];
+          const prevStock = prod.currentStock;
+          prod.totalSold = Math.max(0, (prod.totalSold || 0) - item.quantity);
+          prod.currentStock = prod.openingStock + prod.totalReceived + prod.stockAdjustments - prod.totalSold;
+          prod.updatedAt = new Date().toISOString();
+
+          this.logMovement({
+            businessId: prod.businessId,
+            productId: prod.id,
+            productName: prod.name,
+            sku: prod.sku,
+            type: 'ORDER_CANCELLED',
+            quantity: item.quantity,
+            previousStock: prevStock,
+            newStock: prod.currentStock,
+            unitCost: prod.purchasePrice,
+            referenceId: currentOrder.orderId,
+            notes: `Stock replenished due to order cancellation (${currentOrder.orderId})`,
+            performedBy: changedBy,
+          });
+        }
+      }
+      setToStorage(STORAGE_KEYS.PRODUCTS, allProducts);
+    } else if (prevStatus === 'Cancelled' && newStatus !== 'Cancelled') {
+      // Re-decrement stock if uncancelled
+      const allProducts = this.getAllProductsRaw();
+      for (const item of currentOrder.items) {
+        const pIdx = allProducts.findIndex((p) => p.id === item.productId);
+        if (pIdx !== -1) {
+          const prod = allProducts[pIdx];
+          const prevStock = prod.currentStock;
+          prod.totalSold = (prod.totalSold || 0) + item.quantity;
+          prod.currentStock = prod.openingStock + prod.totalReceived + prod.stockAdjustments - prod.totalSold;
+          prod.updatedAt = new Date().toISOString();
+
+          this.logMovement({
+            businessId: prod.businessId,
+            productId: prod.id,
+            productName: prod.name,
+            sku: prod.sku,
+            type: 'ONLINE_ORDER',
+            quantity: item.quantity,
+            previousStock: prevStock,
+            newStock: prod.currentStock,
+            unitCost: prod.purchasePrice,
+            referenceId: currentOrder.orderId,
+            notes: `Stock re-deducted after reactivation of order (${currentOrder.orderId})`,
+            performedBy: changedBy,
+          });
+        }
+      }
+      setToStorage(STORAGE_KEYS.PRODUCTS, allProducts);
+    }
+
+    const timestamp = new Date().toISOString();
+    const newHistoryEntry: OrderStatusHistory = {
+      changedBy,
+      changedAt: timestamp,
+      previousStatus: prevStatus,
+      newStatus,
+      notes: notes || `Status updated to ${newStatus}`,
+      userRole,
+    };
+
+    currentOrder.orderStatus = newStatus;
+    currentOrder.updatedAt = timestamp;
+    currentOrder.statusHistory = [...(currentOrder.statusHistory || []), newHistoryEntry];
+
+    // If delivered, mark payment as paid if cash on delivery
+    if (newStatus === 'Delivered' && currentOrder.paymentStatus === 'cash_on_delivery') {
+      currentOrder.paymentStatus = 'paid';
+    }
+
+    orders[idx] = currentOrder;
+    setToStorage(STORAGE_KEYS.ORDERS, orders);
+
+    this.logAudit({
+      businessId: currentOrder.storeId !== 'MULTI' ? currentOrder.storeId : null,
+      userId: changedBy,
+      userName: changedBy,
+      userRole: (userRole as any) || 'business_owner',
+      action: 'UPDATE_ORDER_STATUS',
+      details: `Order ${currentOrder.orderId} status changed from ${prevStatus} to ${newStatus}`,
+    });
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('spm_order_update', { detail: { orderId: currentOrder.orderId, status: newStatus } }));
+    }
+
+    return currentOrder;
+  },
+
+  // Rich Admin Platform & Marketplace Analytics
+  getAdminAnalytics(): AdminAnalytics {
+    const orders = this.getOrders();
+    const businesses = this.getBusinesses();
+    const users = this.getUsers().filter((u) => u.role === 'business_owner');
+    const products = this.getAllProductsRaw();
+
+    const totalSales = orders
+      .filter((o) => o.orderStatus !== 'Cancelled')
+      .reduce((acc, o) => acc + o.totalAmount, 0);
+
+    const totalProductsSold = orders
+      .filter((o) => o.orderStatus !== 'Cancelled')
+      .reduce((acc, o) => acc + o.quantity, 0);
+
+    const activeOwners = businesses.filter((b) => b.status === 'active').length;
+    const pendingOwners = businesses.filter((b) => b.status === 'pending').length;
+    const publishedProducts = products.filter((p) => p.isPublic && p.status === 'active').length;
+
+    const pendingOrders = orders.filter((o) => o.orderStatus === 'Pending').length;
+    const completedOrders = orders.filter((o) => o.orderStatus === 'Delivered').length;
+    const cancelledOrders = orders.filter((o) => o.orderStatus === 'Cancelled').length;
+
+    // Unique customers count by phone
+    const uniquePhones = new Set(orders.map((o) => o.customerPhone.trim()));
+    const totalCustomers = uniquePhones.size;
+
+    // Top selling products computation
+    const productStats = new Map<string, { name: string; salesCount: number; totalRevenue: number; businessName: string; imageUrl?: string }>();
+    for (const ord of orders) {
+      if (ord.orderStatus === 'Cancelled') continue;
+      for (const it of ord.items || []) {
+        const existing = productStats.get(it.productId) || {
+          name: it.productNameSnapshot,
+          salesCount: 0,
+          totalRevenue: 0,
+          businessName: it.storeNameSnapshot,
+          imageUrl: it.imageUrl,
+        };
+        existing.salesCount += it.quantity;
+        existing.totalRevenue += it.subtotal;
+        productStats.set(it.productId, existing);
+      }
+    }
+
+    const topSellingProducts = Array.from(productStats.entries())
+      .map(([id, stats]) => ({ id, ...stats }))
+      .sort((a, b) => b.totalRevenue - a.totalRevenue)
+      .slice(0, 5);
+
+    // Top selling owners / stores computation
+    const storeStats = new Map<string, { ownerId: string; storeName: string; ownerName: string; orderCount: number; totalRevenue: number }>();
+    for (const ord of orders) {
+      if (ord.orderStatus === 'Cancelled' || ord.storeId === 'MULTI') continue;
+      const existing = storeStats.get(ord.storeId) || {
+        ownerId: ord.ownerId,
+        storeName: ord.storeNameSnapshot,
+        ownerName: ord.ownerNameSnapshot,
+        orderCount: 0,
+        totalRevenue: 0,
+      };
+      existing.orderCount += 1;
+      existing.totalRevenue += ord.totalAmount;
+      storeStats.set(ord.storeId, existing);
+    }
+
+    const topSellingOwners = Array.from(storeStats.entries())
+      .map(([businessId, stats]) => ({ businessId, ...stats }))
+      .sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+    // Daily Sales trends (last 7 days)
+    const dailyMap = new Map<string, { sales: number; orders: number }>();
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 86400000);
+      const key = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      dailyMap.set(key, { sales: 0, orders: 0 });
+    }
+
+    for (const ord of orders) {
+      if (ord.orderStatus === 'Cancelled') continue;
+      const d = new Date(ord.createdAt);
+      const key = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      if (dailyMap.has(key)) {
+        const curr = dailyMap.get(key)!;
+        curr.sales += ord.totalAmount;
+        curr.orders += 1;
+      }
+    }
+
+    const dailySales = Array.from(dailyMap.entries()).map(([date, data]) => ({
+      date,
+      sales: Math.round(data.sales),
+      orders: data.orders,
+    }));
+
+    // Weekly Sales
+    const weeklySales = [
+      { week: 'Week 1', sales: Math.round(totalSales * 0.18), orders: Math.max(1, Math.round(orders.length * 0.2)) },
+      { week: 'Week 2', sales: Math.round(totalSales * 0.24), orders: Math.max(1, Math.round(orders.length * 0.25)) },
+      { week: 'Week 3', sales: Math.round(totalSales * 0.28), orders: Math.max(1, Math.round(orders.length * 0.27)) },
+      { week: 'Week 4 (Current)', sales: Math.round(totalSales * 0.30), orders: Math.max(1, Math.round(orders.length * 0.28)) },
+    ];
+
+    // Monthly Sales
+    const monthlySales = [
+      { month: 'Jul 2026', sales: Math.round(totalSales * 0.15), orders: Math.round(orders.length * 0.15) },
+      { month: 'Aug 2026', sales: Math.round(totalSales * 0.35), orders: Math.round(orders.length * 0.35) },
+      { month: 'Sep 2026', sales: Math.round(totalSales * 0.50), orders: Math.round(orders.length * 0.50) },
+    ];
+
+    // Highlights
+    const mostOrderedProduct = topSellingProducts.length > 0
+      ? { name: topSellingProducts[0].name, count: topSellingProducts[0].salesCount, revenue: topSellingProducts[0].totalRevenue, storeName: topSellingProducts[0].businessName }
+      : null;
+
+    const bestPerformingStore = topSellingOwners.length > 0
+      ? { name: topSellingOwners[0].storeName, revenue: topSellingOwners[0].totalRevenue, orders: topSellingOwners[0].orderCount, ownerName: topSellingOwners[0].ownerName }
+      : null;
+
+    // Customer spend tracking
+    const custMap = new Map<string, { name: string; phone: string; orderCount: number; totalSpent: number }>();
+    for (const ord of orders) {
+      if (ord.orderStatus === 'Cancelled') continue;
+      const key = ord.customerPhone;
+      const existing = custMap.get(key) || { name: ord.customerName, phone: ord.customerPhone, orderCount: 0, totalSpent: 0 };
+      existing.orderCount += 1;
+      existing.totalSpent += ord.totalAmount;
+      custMap.set(key, existing);
+    }
+
+    const topCustomer = Array.from(custMap.values()).sort((a, b) => b.totalSpent - a.totalSpent)[0] || null;
+
+    return {
+      totalSales,
+      totalOrders: orders.length,
+      totalProductsSold,
+      totalOwners: users.length,
+      activeOwners,
+      pendingOwners,
+      totalCustomers,
+      totalProducts: products.length,
+      publishedProducts,
+      pendingOrders,
+      completedOrders,
+      cancelledOrders,
+      topSellingProducts,
+      topSellingOwners,
+      dailySales,
+      weeklySales,
+      monthlySales,
+      mostOrderedProduct,
+      bestPerformingStore,
+      mostActiveCustomer: topCustomer,
+    };
+  },
+
+  getOwnerAnalytics(businessId: string, ownerId: string) {
+    const orders = this.getOrdersByOwner(ownerId, businessId);
+    const nonCancelled = orders.filter((o) => o.orderStatus !== 'Cancelled');
+    const totalRevenue = nonCancelled.reduce((acc, o) => acc + o.totalAmount, 0);
+    const pendingOrders = orders.filter((o) => o.orderStatus === 'Pending').length;
+    const processingOrders = orders.filter((o) => o.orderStatus === 'Processing' || o.orderStatus === 'Confirmed' || o.orderStatus === 'Ready' || o.orderStatus === 'Out for Delivery').length;
+    const deliveredOrders = orders.filter((o) => o.orderStatus === 'Delivered').length;
+    const cancelledOrders = orders.filter((o) => o.orderStatus === 'Cancelled').length;
+
+    // Today's orders
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayOrders = nonCancelled.filter((o) => o.createdAt.startsWith(todayStr));
+    const todaySales = todayOrders.reduce((acc, o) => acc + o.totalAmount, 0);
+
+    return {
+      totalOrders: orders.length,
+      totalRevenue,
+      pendingOrders,
+      processingOrders,
+      deliveredOrders,
+      cancelledOrders,
+      todayOrdersCount: todayOrders.length,
+      todaySales,
+      recentOrders: orders.slice(0, 5),
+    };
+  },
+
+  getAllOrders(): Order[] {
+    return this.getOrders();
   },
 };

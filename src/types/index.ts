@@ -20,20 +20,22 @@ export interface Business {
   email: string;
   phone: string;
   address: string;
-  businessType: 'Supermarket' | 'Grocery Store' | 'Department Store' | 'Convenience Store' | 'Organic Market' | 'Wholesale Mart' | 'Hypermarket';
+  businessType: 'Supermarket' | 'Grocery Store' | 'Department Store' | 'Convenience Store' | 'Organic Market' | 'Wholesale Mart' | 'Hypermarket' | 'Electronics' | 'Other';
   logoUrl?: string;
   currencySymbol: string;
   taxRate: number; // percentage, e.g. 5 for 5%
-  status: 'active' | 'suspended';
+  status: 'active' | 'suspended' | 'pending';
   createdAt: string;
   description?: string;
   slug?: string;
   isPublicStoreEnabled?: boolean;
+  deliveryCharge?: number;
 }
 
 export interface Product {
   id: string;
-  businessId: string; // Tenant isolation key
+  businessId: string; // Tenant isolation key (storeId)
+  ownerId?: string; // Explicit owner user ID
   name: string;
   description: string;
   category: string;
@@ -56,16 +58,129 @@ export interface Product {
   unit: 'pcs' | 'kg' | 'g' | 'ltr' | 'ml' | 'box' | 'packet' | 'carton' | 'can' | 'bottle' | 'pack';
   notes: string;
   imageUrl: string;
-  isPublic: boolean; // Accessible in public stock directory
+  isPublic: boolean; // Accessible in public stock & marketplace catalog
+  isPublished?: boolean; // Synonym for isPublic
   status: 'active' | 'archived';
   createdAt: string;
   updatedAt: string;
+}
+
+export type OrderStatus =
+  | 'Pending'
+  | 'Confirmed'
+  | 'Processing'
+  | 'Ready'
+  | 'Out for Delivery'
+  | 'Delivered'
+  | 'Cancelled';
+
+export type PaymentStatus = 'pending' | 'paid' | 'cash_on_delivery' | 'failed' | 'refunded';
+
+export interface OrderStatusHistory {
+  changedBy: string;
+  changedAt: string;
+  previousStatus: OrderStatus;
+  newStatus: OrderStatus;
+  notes?: string;
+  userRole?: string;
+}
+
+export interface OrderItem {
+  productId: string;
+  productNameSnapshot: string;
+  sku: string;
+  barcode?: string;
+  unitPriceSnapshot: number;
+  costPriceSnapshot?: number;
+  quantity: number;
+  subtotal: number;
+  unit?: string;
+  ownerId: string;
+  ownerNameSnapshot?: string;
+  storeId: string; // Business ID
+  storeNameSnapshot: string;
+  imageUrl?: string;
+}
+
+export interface Order {
+  id: string; // e.g. ORD-2026-XXXXX
+  orderId: string; // Unique human-readable code
+  parentOrderId?: string; // If this is a split sub-order for an individual vendor
+  childOrderIds?: string[]; // If this is a master order encompassing multiple vendor orders
+  customerName: string;
+  customerPhone: string;
+  customerEmail?: string;
+  deliveryAddress: string;
+  customerNote?: string;
+  items: OrderItem[];
+  // Snapshot primary fields for simple querying and historical consistency
+  productId?: string;
+  productNameSnapshot?: string;
+  ownerId: string;
+  ownerNameSnapshot: string;
+  storeId: string; // Business ID
+  storeNameSnapshot: string;
+  quantity: number;
+  unitPriceSnapshot: number;
+  subtotal: number;
+  deliveryCharge: number;
+  totalAmount: number;
+  orderStatus: OrderStatus;
+  paymentStatus: PaymentStatus;
+  paymentMethod: 'cash_on_delivery' | 'mobile_banking' | 'card' | 'online';
+  statusHistory: OrderStatusHistory[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CartItem {
+  product: Product & { businessName?: string; businessAddress?: string; ownerId?: string };
+  quantity: number;
+}
+
+export interface AdminAnalytics {
+  totalSales: number;
+  totalOrders: number;
+  totalProductsSold: number;
+  totalOwners: number;
+  activeOwners: number;
+  pendingOwners: number;
+  totalCustomers: number;
+  totalProducts: number;
+  publishedProducts: number;
+  pendingOrders: number;
+  completedOrders: number;
+  cancelledOrders: number;
+  topSellingProducts: {
+    id: string;
+    name: string;
+    salesCount: number;
+    totalRevenue: number;
+    businessName: string;
+    imageUrl?: string;
+  }[];
+  topSellingOwners: {
+    ownerId: string;
+    businessId: string;
+    storeName: string;
+    ownerName: string;
+    orderCount: number;
+    totalRevenue: number;
+  }[];
+  dailySales: { date: string; sales: number; orders: number }[];
+  weeklySales: { week: string; sales: number; orders: number }[];
+  monthlySales: { month: string; sales: number; orders: number }[];
+  mostOrderedProduct: { name: string; count: number; revenue: number; storeName: string } | null;
+  bestPerformingStore: { name: string; revenue: number; orders: number; ownerName: string } | null;
+  mostActiveCustomer: { name: string; phone: string; orderCount: number; totalSpent: number } | null;
 }
 
 export type MovementType = 
   | 'OPENING'
   | 'RECEIVING'
   | 'SALE'
+  | 'ONLINE_ORDER'
+  | 'ORDER_CANCELLED'
   | 'ADJUSTMENT_ADD'
   | 'ADJUSTMENT_SUB'
   | 'RETURN';

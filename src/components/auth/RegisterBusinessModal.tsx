@@ -328,11 +328,13 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
               >
                 <option value="Supermarket">Supermarket & Mart</option>
                 <option value="Grocery Store">Grocery Store</option>
+                <option value="Electronics">Electronics Store</option>
                 <option value="Department Store">Department Store</option>
                 <option value="Organic Market">Organic Food Market</option>
                 <option value="Convenience Store">Convenience Store</option>
                 <option value="Wholesale Mart">Wholesale Mart</option>
                 <option value="Hypermarket">Hypermarket</option>
+                <option value="Other">Other</option>
               </select>
             </div>
 

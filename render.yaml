@@ -1,0 +1,15 @@
+# Render.com Deployment Configuration for Smart Product Manager (SPM)
+services:
+  - type: web
+    name: smartproduct-manager
+    runtime: static
+    buildCommand: npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN

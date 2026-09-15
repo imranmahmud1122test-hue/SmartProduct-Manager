@@ -143,14 +143,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     onClose();
   };
 
-  const autofillDemo = (type: 'metro' | 'metro_cashier' | 'valley') => {
+  const autofillDemo = (type: 'metro' | 'valley') => {
     setError(null);
     if (type === 'metro') {
       setEmail('owner@metro.com');
       setPassword('metro123');
-    } else if (type === 'metro_cashier') {
-      setEmail('cashier@metro.com');
-      setPassword('cashier123');
     } else if (type === 'valley') {
       setEmail('owner@freshvalley.com');
       setPassword('valley123');
@@ -276,36 +273,32 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
               <button
                 type="button"
                 id="btn-autofill-metro"
                 onClick={() => autofillDemo('metro')}
-                className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 rounded-xl border border-emerald-200 font-medium text-left transition-all truncate"
+                className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 rounded-xl border border-emerald-200 font-medium text-left transition-all"
               >
-                <span className="font-bold block">Metro Owner</span>
-                <span className="text-[10px] text-emerald-700">owner@metro.com</span>
-              </button>
-              <button
-                type="button"
-                id="btn-autofill-cashier"
-                onClick={() => autofillDemo('metro_cashier')}
-                className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-900 rounded-xl border border-blue-200 font-medium text-left transition-all truncate"
-              >
-                <span className="font-bold block">Cashier Staff</span>
-                <span className="text-[10px] text-blue-700">cashier@metro.com</span>
+                <div className="flex items-center justify-between">
+                  <span className="font-bold block text-emerald-900">Metro Owner</span>
+                  <span className="text-[9px] font-mono text-emerald-700 bg-emerald-200/60 px-1.5 py-0.2 rounded">SHOP-001</span>
+                </div>
+                <span className="text-[11px] text-emerald-700 block mt-0.5">owner@metro.com</span>
+                <span className="text-[10px] text-emerald-600 block">Full Store & POS Access</span>
               </button>
               <button
                 type="button"
                 id="btn-autofill-valley"
                 onClick={() => autofillDemo('valley')}
-                className="col-span-full px-2.5 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-900 rounded-xl border border-teal-200 font-medium text-left transition-all flex items-center justify-between"
+                className="px-3 py-2 bg-teal-50 hover:bg-teal-100 text-teal-950 rounded-xl border border-teal-200 font-medium text-left transition-all"
               >
-                <div>
-                  <span className="font-bold block">Fresh Valley Organic</span>
-                  <span className="text-[10px] text-teal-700">owner@freshvalley.com</span>
+                <div className="flex items-center justify-between">
+                  <span className="font-bold block text-teal-900">Fresh Valley</span>
+                  <span className="text-[9px] font-mono text-teal-700 bg-teal-200/60 px-1.5 py-0.2 rounded">SHOP-002</span>
                 </div>
-                <span className="text-[10px] text-teal-700 font-mono">SHOP-002</span>
+                <span className="text-[11px] text-teal-700 block mt-0.5">owner@freshvalley.com</span>
+                <span className="text-[10px] text-teal-600 block">Full Store & POS Access</span>
               </button>
             </div>
           </div>

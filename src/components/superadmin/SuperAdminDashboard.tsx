@@ -26,10 +26,13 @@ import {
   Clock,
   ExternalLink,
   Check,
-  AlertTriangle
+  AlertTriangle,
+  ClipboardList,
+  Truck,
+  MapPin
 } from 'lucide-react';
 import { db } from '../../services/storage';
-import { Business, User, SupportSettings, SupportTicket } from '../../types';
+import { Business, User, SupportSettings, SupportTicket, Order } from '../../types';
 import { formatCurrency, formatDate } from '../../utils/codeGenerators';
 import { Logo } from '../common/Logo';
 import { useLanguage, LanguageSwitcher } from '../../context/LanguageContext';
@@ -45,10 +48,15 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   onLogout,
   onSwitchToBusiness,
 }) => {
-  const [activeAdminTab, setActiveAdminTab] = useState<'workspaces' | 'support_settings' | 'support_tickets'>('workspaces');
+  const [activeAdminTab, setActiveAdminTab] = useState<'workspaces' | 'orders' | 'support_settings' | 'support_tickets'>('workspaces');
   const [businesses, setBusinesses] = useState<Business[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [orderSearchQuery, setOrderSearchQuery] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<string>('ALL');
+  const [orderBusinessFilter, setOrderBusinessFilter] = useState<string>('ALL');
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [inspectOrder, setInspectOrder] = useState<Order | null>(null);
   const { t } = useLanguage();
 
   // Support Settings state
@@ -71,10 +79,19 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     setBusinesses(db.getBusinesses());
     setSupportSettings(db.getSupportSettings());
     setTickets(db.getSupportTickets());
+    setOrders(db.getAllOrders());
   };
 
   useEffect(() => {
     loadData();
+
+    const handleUpdate = () => loadData();
+    window.addEventListener('spm_order_update', handleUpdate);
+    window.addEventListener('spm_storage_update', handleUpdate);
+    return () => {
+      window.removeEventListener('spm_order_update', handleUpdate);
+      window.removeEventListener('spm_storage_update', handleUpdate);
+    };
   }, []);
 
   const stats = db.getPlatformStats();
@@ -180,7 +197,22 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
               }`}
             >
               <Building2 className="w-4 h-4 text-purple-400" />
-              <span>Registered Workspaces ({businesses.length})</span>
+              <span>Workspaces ({businesses.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveAdminTab('orders')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer relative ${
+                activeAdminTab === 'orders'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <ClipboardList className="w-4 h-4 text-amber-400" />
+              <span>Marketplace Orders</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-slate-800 text-amber-300 text-[10px] font-black">
+                {orders.length}
+              </span>
             </button>
 
             <button
@@ -366,6 +398,309 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                 </table>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* TAB: Multi-Vendor Marketplace Orders (Super Admin Global View) */}
+        {activeAdminTab === 'orders' && (
+          <div className="space-y-6">
+            {/* Global Marketplace Order Stats */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-5 bg-white rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-semibold text-slate-500 block">Total Orders</span>
+                  <span className="text-3xl font-black text-slate-900 mt-1 block">{orders.length}</span>
+                  <span className="text-[11px] text-emerald-600 font-medium">All Stores Combined</span>
+                </div>
+                <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                  <ClipboardList className="w-6 h-6" />
+                </div>
+              </div>
+
+              <div className="p-5 bg-white rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-semibold text-slate-500 block">Pending Fulfillment</span>
+                  <span className="text-3xl font-black text-amber-600 mt-1 block">
+                    {orders.filter((o) => o.orderStatus === 'Pending').length}
+                  </span>
+                  <span className="text-[11px] text-amber-700 font-medium">Awaiting merchant action</span>
+                </div>
+                <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                  <Clock className="w-6 h-6" />
+                </div>
+              </div>
+
+              <div className="p-5 bg-white rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-semibold text-slate-500 block">Delivered Orders</span>
+                  <span className="text-3xl font-black text-emerald-700 mt-1 block">
+                    {orders.filter((o) => o.orderStatus === 'Delivered').length}
+                  </span>
+                  <span className="text-[11px] text-emerald-600 font-medium">Completed Deliveries</span>
+                </div>
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+              </div>
+
+              <div className="p-5 bg-white rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-semibold text-slate-500 block">Marketplace GMV</span>
+                  <span className="text-3xl font-black text-emerald-700 mt-1 block">
+                    {formatCurrency(
+                      orders
+                        .filter((o) => o.orderStatus !== 'Cancelled')
+                        .reduce((acc, o) => acc + o.totalAmount, 0)
+                    )}
+                  </span>
+                  <span className="text-[11px] text-slate-500 font-medium">Gross Marketplace Value</span>
+                </div>
+                <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center">
+                  <DollarSign className="w-6 h-6" />
+                </div>
+              </div>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                <div className="relative sm:col-span-6">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search by Order ID, customer name, phone, address..."
+                    value={orderSearchQuery}
+                    onChange={(e) => setOrderSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-3">
+                  <select
+                    value={orderBusinessFilter}
+                    onChange={(e) => setOrderBusinessFilter(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value="ALL">All Stores ({businesses.length})</option>
+                    {businesses.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="sm:col-span-3">
+                  <select
+                    value={orderStatusFilter}
+                    onChange={(e) => setOrderStatusFilter(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Confirmed">Confirmed</option>
+                    <option value="Packed">Packed</option>
+                    <option value="Ready">Ready for Delivery</option>
+                    <option value="In Transit">In Transit</option>
+                    <option value="Delivered">Delivered</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Orders Table */}
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-extrabold text-slate-900">All Marketplace Orders</h2>
+                  <p className="text-xs text-slate-500">Live platform customer orders across all vendor shops.</p>
+                </div>
+                <span className="text-xs text-slate-400 font-bold">{orders.length} total records</span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                      <th className="p-4">Order ID & Date</th>
+                      <th className="p-4">Store / Business</th>
+                      <th className="p-4">Customer & Phone</th>
+                      <th className="p-4">Items & Details</th>
+                      <th className="p-4">Total Amount</th>
+                      <th className="p-4">Payment</th>
+                      <th className="p-4">Order Status</th>
+                      <th className="p-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                    {orders
+                      .filter((o) => {
+                        if (orderBusinessFilter !== 'ALL' && o.businessId !== orderBusinessFilter) return false;
+                        if (orderStatusFilter !== 'ALL' && o.orderStatus !== orderStatusFilter) return false;
+                        if (orderSearchQuery.trim()) {
+                          const q = orderSearchQuery.toLowerCase();
+                          const matchId = o.id.toLowerCase().includes(q);
+                          const matchCust = o.customerName.toLowerCase().includes(q);
+                          const matchPhone = o.customerPhone.toLowerCase().includes(q);
+                          const matchStore = (o.businessNameSnapshot || '').toLowerCase().includes(q);
+                          const matchAddr = o.deliveryAddress.toLowerCase().includes(q);
+                          if (!matchId && !matchCust && !matchPhone && !matchStore && !matchAddr) return false;
+                        }
+                        return true;
+                      })
+                      .map((order) => {
+                        const statusColors: Record<string, string> = {
+                          Pending: 'bg-amber-100 text-amber-800 border-amber-200',
+                          Confirmed: 'bg-blue-100 text-blue-800 border-blue-200',
+                          Packed: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+                          Ready: 'bg-purple-100 text-purple-800 border-purple-200',
+                          'In Transit': 'bg-cyan-100 text-cyan-800 border-cyan-200',
+                          Delivered: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                          Cancelled: 'bg-rose-100 text-rose-800 border-rose-200',
+                        };
+
+                        return (
+                          <tr key={order.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="p-4">
+                              <span className="font-mono font-bold text-slate-900 block">{order.id}</span>
+                              <span className="text-[10px] text-slate-400">{formatDate(order.createdAt)}</span>
+                            </td>
+                            <td className="p-4">
+                              <div className="font-bold text-slate-900 flex items-center gap-1">
+                                <Building2 className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                                <span>{order.businessNameSnapshot || order.businessId}</span>
+                              </div>
+                              <span className="text-[10px] text-slate-400 block">{order.businessId}</span>
+                            </td>
+                            <td className="p-4">
+                              <span className="font-bold text-slate-900 block">{order.customerName}</span>
+                              <span className="text-[11px] text-slate-500 font-mono flex items-center gap-1">
+                                <Phone className="w-3 h-3 text-slate-400" />
+                                {order.customerPhone}
+                              </span>
+                            </td>
+                            <td className="p-4">
+                              <span className="text-slate-800 font-bold block">{order.items.length} items</span>
+                              <span className="text-[10px] text-slate-400 truncate max-w-xs block">
+                                {order.items.map((i) => `${i.productNameSnapshot} (x${i.quantity})`).join(', ')}
+                              </span>
+                            </td>
+                            <td className="p-4">
+                              <span className="font-black text-slate-900 text-sm">
+                                {formatCurrency(order.totalAmount)}
+                              </span>
+                            </td>
+                            <td className="p-4">
+                              <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 text-[10px] font-bold uppercase">
+                                {order.paymentMethod}
+                              </span>
+                              <span className={`block text-[10px] font-semibold mt-0.5 ${order.paymentStatus === 'Paid' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                {order.paymentStatus}
+                              </span>
+                            </td>
+                            <td className="p-4">
+                              <span
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                                  statusColors[order.orderStatus] || 'bg-slate-100 text-slate-800'
+                                }`}
+                              >
+                                {order.orderStatus}
+                              </span>
+                            </td>
+                            <td className="p-4 text-right">
+                              <button
+                                onClick={() => setInspectOrder(order)}
+                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5" /> Inspect
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Super Admin Inspect Order Modal */}
+            {inspectOrder && (
+              <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+                <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-5 my-8 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-black text-slate-900">Order #{inspectOrder.id}</h3>
+                        <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 text-xs font-bold">
+                          {inspectOrder.orderStatus}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400">Placed on {formatDate(inspectOrder.createdAt)}</p>
+                    </div>
+                    <button
+                      onClick={() => setInspectOrder(null)}
+                      className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 cursor-pointer"
+                    >
+                      <XCircle className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Merchant & Customer summary */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs">
+                    <div>
+                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Fulfilling Merchant</span>
+                      <strong className="text-slate-900 text-sm block">{inspectOrder.businessNameSnapshot}</strong>
+                      <span className="text-slate-500">ID: {inspectOrder.businessId}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Customer & Shipping</span>
+                      <strong className="text-slate-900 block">{inspectOrder.customerName}</strong>
+                      <span className="text-slate-600 block">📞 {inspectOrder.customerPhone}</span>
+                      <span className="text-slate-600 block">📍 {inspectOrder.deliveryAddress}</span>
+                    </div>
+                  </div>
+
+                  {/* Items snapshot table */}
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Items (Snapshot)</h4>
+                    <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden">
+                      {inspectOrder.items.map((item, idx) => (
+                        <div key={idx} className="p-3.5 flex items-center justify-between text-xs bg-white">
+                          <div>
+                            <span className="font-bold text-slate-900 block">{item.productNameSnapshot}</span>
+                            <span className="text-slate-400 text-[11px]">
+                              {formatCurrency(item.unitPriceSnapshot)} × {item.quantity} {item.unitSnapshot}
+                            </span>
+                          </div>
+                          <span className="font-extrabold text-slate-900">{formatCurrency(item.subtotal)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-slate-900 text-white rounded-2xl flex items-center justify-between">
+                    <div>
+                      <span className="text-xs text-slate-400 block">Grand Total</span>
+                      <span className="text-2xl font-black text-emerald-400">{formatCurrency(inspectOrder.totalAmount)}</span>
+                    </div>
+                    <div className="text-right text-xs">
+                      <span className="text-slate-400 block">Payment Method</span>
+                      <span className="font-bold text-white uppercase">{inspectOrder.paymentMethod} • {inspectOrder.paymentStatus}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <button
+                      onClick={() => setInspectOrder(null)}
+                      className="px-5 py-2.5 bg-slate-900 text-white font-bold text-xs rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
+                    >
+                      Close Window
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

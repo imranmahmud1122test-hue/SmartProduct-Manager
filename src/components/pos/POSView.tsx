@@ -133,6 +133,15 @@ export const POSView: React.FC<POSViewProps> = ({
 
   useEffect(() => {
     reloadProducts();
+
+    const handleStorageUpdate = () => {
+      reloadProducts();
+    };
+
+    window.addEventListener('spm_storage_update', handleStorageUpdate);
+    return () => {
+      window.removeEventListener('spm_storage_update', handleStorageUpdate);
+    };
   }, [businessId]);
 
   useEffect(() => {

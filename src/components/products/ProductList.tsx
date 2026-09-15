@@ -31,6 +31,7 @@ interface ProductListProps {
   businessId: string;
   business: Business | null;
   currentUser: User;
+  dataVersion?: number;
   onOpenAddProduct: () => void;
   onOpenEditProduct: (product: Product) => void;
   onOpenProductDetail: (product: Product) => void;
@@ -43,6 +44,7 @@ export const ProductList: React.FC<ProductListProps> = ({
   businessId,
   business,
   currentUser,
+  dataVersion,
   onOpenAddProduct,
   onOpenEditProduct,
   onOpenProductDetail,
@@ -66,7 +68,16 @@ export const ProductList: React.FC<ProductListProps> = ({
 
   useEffect(() => {
     loadProducts();
-  }, [businessId]);
+
+    const handleStorageUpdate = (e: any) => {
+      loadProducts();
+    };
+
+    window.addEventListener('spm_storage_update', handleStorageUpdate);
+    return () => {
+      window.removeEventListener('spm_storage_update', handleStorageUpdate);
+    };
+  }, [businessId, dataVersion]);
 
   const currency = business?.currencySymbol || '৳';
   const categories = ['ALL', ...db.getCategories()];
@@ -297,9 +308,30 @@ export const ProductList: React.FC<ProductListProps> = ({
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {sortedProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400">
-                    <Package className="w-10 h-10 mx-auto text-slate-300 mb-2 stroke-1" />
-                    <p className="text-sm font-semibold text-slate-600">No products match your filters.</p>
+                  <td colSpan={9} className="py-16 text-center text-slate-400">
+                    <div className="max-w-md mx-auto space-y-3">
+                      <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                        <Package className="w-8 h-8" />
+                      </div>
+                      <div>
+                        <h4 className="text-base font-bold text-slate-800">
+                          {products.length === 0 ? 'No Products in this Catalog' : 'No Products Match Filters'}
+                        </h4>
+                        <p className="text-xs text-slate-500 mt-1">
+                          {products.length === 0
+                            ? 'Get started by creating your first product with automated barcode, stock balance, and pricing.'
+                            : 'Try adjusting your search keywords, category filters, or visibility flags.'}
+                        </p>
+                      </div>
+                      {products.length === 0 && (
+                        <button
+                          onClick={onOpenAddProduct}
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md transition-all"
+                        >
+                          <Plus className="w-4 h-4" /> Add Product Now
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ) : (

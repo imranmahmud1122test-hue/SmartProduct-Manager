@@ -19,10 +19,11 @@ import {
   Building2,
   ChevronRight,
   SlidersHorizontal,
-  History
+  History,
+  ClipboardList
 } from 'lucide-react';
 import { db } from '../../services/storage';
-import { Product, Sale, InventoryMovement, Business, User } from '../../types';
+import { Product, Sale, InventoryMovement, Business, User, Order } from '../../types';
 import { formatCurrency, formatDate, computeProductStockAnalysis } from '../../utils/codeGenerators';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -30,7 +31,7 @@ interface BusinessDashboardProps {
   businessId: string;
   business: Business | null;
   currentUser: User;
-  onNavigate: (tab: 'products' | 'pos' | 'scanner' | 'reports' | 'suppliers' | 'settings') => void;
+  onNavigate: (tab: 'products' | 'orders' | 'pos' | 'scanner' | 'reports' | 'suppliers' | 'settings') => void;
   onOpenAddProduct: () => void;
   onOpenReceiveStock: (product?: Product) => void;
   onOpenProductDetail: (product: Product) => void;
@@ -52,16 +53,34 @@ export const BusinessDashboard: React.FC<BusinessDashboardProps> = ({
   const { t } = useLanguage();
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [recentMovements, setRecentMovements] = useState<InventoryMovement[]>([]);
 
-  useEffect(() => {
+  const loadDashboardData = () => {
     const prods = db.getProducts(businessId);
     setProducts(prods);
     const sls = db.getSales(businessId);
     setSales(sls);
+    const ords = db.getOrdersByOwner(currentUser.id, businessId);
+    setOrders(ords);
     const movs = db.getMovements(businessId);
     setRecentMovements(movs.slice(0, 6));
-  }, [businessId]);
+  };
+
+  useEffect(() => {
+    loadDashboardData();
+
+    const handleStorageUpdate = () => {
+      loadDashboardData();
+    };
+
+    window.addEventListener('spm_storage_update', handleStorageUpdate);
+    window.addEventListener('spm_order_update', handleStorageUpdate);
+    return () => {
+      window.removeEventListener('spm_storage_update', handleStorageUpdate);
+      window.removeEventListener('spm_order_update', handleStorageUpdate);
+    };
+  }, [businessId, currentUser.id]);
 
   const currency = business?.currencySymbol || '৳';
 
@@ -79,6 +98,12 @@ export const BusinessDashboard: React.FC<BusinessDashboardProps> = ({
   const todaySales = sales.filter((s) => s.createdAt.startsWith(todayStr));
   const todayRevenue = todaySales.reduce((acc, s) => acc + s.totalAmount, 0);
   const todayUnitsSold = todaySales.reduce((acc, s) => acc + s.items.reduce((ia, item) => ia + item.quantity, 0), 0);
+
+  // Online orders metrics
+  const pendingOrders = orders.filter((o) => o.orderStatus === 'Pending');
+  const totalOrderRevenue = orders
+    .filter((o) => o.orderStatus !== 'Cancelled')
+    .reduce((acc, o) => acc + o.totalAmount, 0);
 
   // Stock status lists
   const lowStockProducts = activeProducts.filter((p) => p.currentStock > 0 && p.currentStock <= p.minStockLevel);
@@ -124,6 +149,19 @@ export const BusinessDashboard: React.FC<BusinessDashboardProps> = ({
 
           {/* Quick Action Station */}
           <div className="flex flex-wrap gap-2.5 shrink-0">
+            <button
+              id="btn-dash-orders"
+              onClick={() => onNavigate('orders')}
+              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5"
+            >
+              <ClipboardList className="w-4 h-4" />
+              <span>Customer Orders</span>
+              {pendingOrders.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-slate-900 text-amber-400 text-[10px] font-black">
+                  {pendingOrders.length}
+                </span>
+              )}
+            </button>
             <button
               id="btn-dash-pos"
               onClick={() => onNavigate('pos')}
@@ -206,8 +244,23 @@ export const BusinessDashboard: React.FC<BusinessDashboardProps> = ({
         </div>
       </div>
 
-      {/* KPI Cards Grid (Prompt Mandate #3: Total Products, Today's Sales, Revenue, Low Stock, etc.) */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* KPI Cards Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* Online Orders Card */}
+        <div
+          onClick={() => onNavigate('orders')}
+          className="p-5 bg-white rounded-2xl border border-slate-200 shadow-2xs hover:border-amber-400 hover:shadow-md transition-all flex items-center justify-between cursor-pointer group"
+        >
+          <div>
+            <span className="text-xs font-semibold text-slate-500 block group-hover:text-amber-700">Online Orders</span>
+            <span className="text-2xl font-black text-slate-900 mt-0.5 block">{orders.length}</span>
+            <span className="text-[11px] text-amber-600 font-bold">{pendingOrders.length} pending fulfillment</span>
+          </div>
+          <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+            <ClipboardList className="w-6 h-6" />
+          </div>
+        </div>
+
         {/* Total Products */}
         <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-2xs hover:border-slate-300 transition-all flex items-center justify-between">
           <div>
@@ -223,11 +276,11 @@ export const BusinessDashboard: React.FC<BusinessDashboardProps> = ({
         {/* Today's Sales Revenue */}
         <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-2xs hover:border-slate-300 transition-all flex items-center justify-between">
           <div>
-            <span className="text-xs font-semibold text-slate-500 block">Today's Revenue</span>
+            <span className="text-xs font-semibold text-slate-500 block">Today's POS Sales</span>
             <span className="text-2xl font-black text-emerald-700 mt-0.5 block">
               {formatCurrency(todayRevenue, currency)}
             </span>
-            <span className="text-[11px] text-slate-500 font-medium">{todaySales.length} orders today</span>
+            <span className="text-[11px] text-slate-500 font-medium">{todaySales.length} counter sales</span>
           </div>
           <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
             <DollarSign className="w-6 h-6" />

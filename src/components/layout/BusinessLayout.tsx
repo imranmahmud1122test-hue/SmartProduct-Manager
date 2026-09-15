@@ -22,7 +22,8 @@ import {
   Mail,
   Phone,
   AlertTriangle,
-  ExternalLink
+  ExternalLink,
+  ClipboardList
 } from 'lucide-react';
 import { Business, User } from '../../types';
 import { Logo } from '../common/Logo';
@@ -33,8 +34,8 @@ import { db } from '../../services/storage';
 interface BusinessLayoutProps {
   business: Business | null;
   currentUser: User;
-  activeTab: 'dashboard' | 'products' | 'pos' | 'scanner' | 'reports' | 'suppliers' | 'settings';
-  onNavigate: (tab: 'dashboard' | 'products' | 'pos' | 'scanner' | 'reports' | 'suppliers' | 'settings') => void;
+  activeTab: 'dashboard' | 'products' | 'orders' | 'pos' | 'scanner' | 'reports' | 'suppliers' | 'settings';
+  onNavigate: (tab: 'dashboard' | 'products' | 'orders' | 'pos' | 'scanner' | 'reports' | 'suppliers' | 'settings') => void;
   onLogout: () => void;
   onOpenPublicView: () => void;
   onOpenAddProduct: () => void;
@@ -62,6 +63,12 @@ export const BusinessLayout: React.FC<BusinessLayoutProps> = ({
 
   const supportSettings = db.getSupportSettings();
 
+  const pendingOrdersCount = React.useMemo(() => {
+    if (!business) return 0;
+    const orders = db.getOrdersByOwner(currentUser.id, business.id);
+    return orders.filter((o) => o.orderStatus === 'Pending').length;
+  }, [business, currentUser.id]);
+
   const openSupport = (tab: 'contact' | 'report' = 'contact') => {
     setSupportModalTab(tab);
     setIsSupportOpen(true);
@@ -70,6 +77,7 @@ export const BusinessLayout: React.FC<BusinessLayoutProps> = ({
   const navItems = [
     { id: 'dashboard', label: t('dashboard', 'Dashboard'), icon: LayoutDashboard },
     { id: 'products', label: t('productsAndStock', 'Products & Stock'), icon: Package },
+    { id: 'orders', label: 'Orders', icon: ClipboardList, badge: pendingOrdersCount },
     { id: 'pos', label: t('posRegister', 'POS Register'), icon: ShoppingBag },
     { id: 'scanner', label: t('barcodeScanner', 'Barcode Scanner'), icon: ScanBarcode },
     { id: 'suppliers', label: t('suppliers', 'Suppliers'), icon: Truck },
@@ -133,17 +141,6 @@ export const BusinessLayout: React.FC<BusinessLayoutProps> = ({
 
           {/* Right Header Station */}
           <div className="flex items-center space-x-2 sm:space-x-3">
-            {/* Help & Support Button */}
-            <button
-              onClick={() => openSupport('contact')}
-              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
-              title="Help & Support Center"
-            >
-              <LifeBuoy className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
-              <span className="hidden md:inline">Help & Support</span>
-              <span className="text-[10px] text-emerald-800 font-semibold hidden lg:inline">(সাহায্য ও সাপোর্ট)</span>
-            </button>
-
             {/* Language Switcher */}
             <LanguageSwitcher variant="header" />
 
@@ -204,7 +201,12 @@ export const BusinessLayout: React.FC<BusinessLayoutProps> = ({
                   }`}
                 >
                   <Icon className={`w-4 h-4 ${isActive ? 'text-emerald-600' : 'text-slate-400'}`} />
-                  {item.label}
+                  <span>{item.label}</span>
+                  {'badge' in item && typeof item.badge === 'number' && item.badge > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-extrabold animate-pulse">
+                      {item.badge}
+                    </span>
+                  )}
                 </button>
               );
             })}

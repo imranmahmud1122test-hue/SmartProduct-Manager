@@ -25,11 +25,13 @@ import { ReportsView } from './components/reports/ReportsView';
 import { SuppliersView } from './components/suppliers/SuppliersView';
 import { BusinessSettingsView } from './components/settings/BusinessSettingsView';
 import { SuperAdminDashboard } from './components/superadmin/SuperAdminDashboard';
+import { OwnerOrdersView } from './components/orders/OwnerOrdersView';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentBusiness, setCurrentBusiness] = useState<Business | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'products' | 'pos' | 'scanner' | 'reports' | 'suppliers' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'products' | 'orders' | 'pos' | 'scanner' | 'reports' | 'suppliers' | 'settings'>('dashboard');
+  const [dataVersion, setDataVersion] = useState(0);
 
   // Modals state
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -121,7 +123,6 @@ export default function App() {
           onOpenRegister={() => setIsRegisterOpen(true)}
           onQuickLogin={(role) => {
             let targetEmail = 'owner@metro.com';
-            if (role === 'metro_cashier') targetEmail = 'cashier@metro.com';
             if (role === 'valley_owner') targetEmail = 'owner@freshvalley.com';
             const user = db.findUserByEmail(targetEmail);
             if (user) {
@@ -220,6 +221,7 @@ export default function App() {
             businessId={businessId}
             business={currentBusiness}
             currentUser={currentUser}
+            dataVersion={dataVersion}
             onOpenAddProduct={() => {
               setProductToEdit(null);
               setIsAddProductOpen(true);
@@ -241,6 +243,13 @@ export default function App() {
               setProductForAdjustment(prod);
               setIsAdjustmentOpen(true);
             }}
+          />
+        )}
+
+        {activeTab === 'orders' && currentBusiness && (
+          <OwnerOrdersView
+            business={currentBusiness}
+            currentUser={currentUser}
           />
         )}
 
@@ -299,7 +308,8 @@ export default function App() {
           setProductToEdit(null);
         }}
         onSaved={() => {
-          // Trigger refresh if needed
+          setDataVersion((v) => v + 1);
+          setActiveTab('products');
         }}
         productToEdit={productToEdit}
         businessId={businessId}
@@ -328,7 +338,7 @@ export default function App() {
           setProductForReceive(null);
         }}
         onSuccess={() => {
-          // Refreshed via local state on respective views
+          setDataVersion((v) => v + 1);
         }}
         preselectedProduct={productForReceive}
         businessId={businessId}
@@ -341,7 +351,9 @@ export default function App() {
           setIsAdjustmentOpen(false);
           setProductForAdjustment(null);
         }}
-        onSuccess={() => {}}
+        onSuccess={() => {
+          setDataVersion((v) => v + 1);
+        }}
         preselectedProduct={productForAdjustment}
         businessId={businessId}
         currentUser={currentUser}
