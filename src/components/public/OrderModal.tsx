@@ -48,7 +48,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
   const totalAmount = subtotal + deliveryCharge;
   const maxAvailable = product.currentStock;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -79,7 +79,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
 
     try {
       setIsSubmitting(true);
-      const result = db.createOrder({
+      const result = await db.createOrder({
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim(),
         zilla: zilla.trim(),

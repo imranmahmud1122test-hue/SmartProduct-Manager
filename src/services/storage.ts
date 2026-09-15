@@ -32,6 +32,26 @@ import {
 import { emitGlobalToast } from '../context/ToastContext';
 import { compressImageDataUrl } from '../utils/imageCompressor';
 
+function sanitizeForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return null as any;
+  }
+  if (Array.isArray(data)) {
+    return data.map(item => sanitizeForFirestore(item)) as any;
+  }
+  if (typeof data === 'object') {
+    const result: any = {};
+    for (const key of Object.keys(data)) {
+      const val = (data as any)[key];
+      if (val !== undefined) {
+        result[key] = sanitizeForFirestore(val);
+      }
+    }
+    return result;
+  }
+  return data;
+}
+
 const STORAGE_KEYS = {
   USERS: 'ssm_users_v2',
   BUSINESSES: 'ssm_businesses_v2',
@@ -2111,7 +2131,7 @@ export const db = {
     all.unshift(newMovement);
     setToStorage(STORAGE_KEYS.MOVEMENTS, all);
 
-    setDoc(doc(firestoreDb, 'movements', newMovement.id), newMovement).catch((err) =>
+    setDoc(doc(firestoreDb, 'movements', newMovement.id), sanitizeForFirestore(newMovement)).catch((err) =>
       handleFirestoreError(err, OperationType.CREATE, `movements/${newMovement.id}`)
     );
 
@@ -2436,7 +2456,7 @@ export const db = {
     return matched || null;
   },
 
-  createOrder(payload: {
+  async createOrder(payload: {
     customerName: string;
     customerPhone: string;
     customerEmail?: string;
@@ -2446,7 +2466,7 @@ export const db = {
     customerNote?: string;
     paymentMethod?: 'cash_on_delivery' | 'mobile_banking' | 'card' | 'online';
     items: { productId: string; quantity: number }[];
-  }): { masterOrder: Order; vendorOrders: Order[] } {
+  }): Promise<{ masterOrder: Order; vendorOrders: Order[] }> {
     if (!payload.items || payload.items.length === 0) {
       throw new Error('Order must contain at least one item');
     }
@@ -2519,7 +2539,6 @@ export const db = {
         });
       }
     }
-    setToStorage(STORAGE_KEYS.PRODUCTS, allProducts);
 
     // Group items by vendor/store
     const itemsByStore = new Map<string, OrderItem[]>();
@@ -2634,17 +2653,21 @@ export const db = {
           updatedAt: timestamp,
         };
 
-    setToStorage(STORAGE_KEYS.ORDERS, allStoredOrders);
-
-    // Save orders to Cloud Firestore
-    setDoc(doc(firestoreDb, 'orders', masterOrder.id), masterOrder).catch((err) =>
-      handleFirestoreError(err, OperationType.CREATE, `orders/${masterOrder.id}`)
-    );
-    for (const vo of vendorOrders) {
-      setDoc(doc(firestoreDb, 'orders', vo.id), vo).catch((err) =>
-        handleFirestoreError(err, OperationType.CREATE, `orders/${vo.id}`)
-      );
+    // Save orders to Cloud Firestore first
+    try {
+      await setDoc(doc(firestoreDb, 'orders', masterOrder.id), sanitizeForFirestore(masterOrder));
+      for (const vo of vendorOrders) {
+        if (vo.id !== masterOrder.id) {
+          await setDoc(doc(firestoreDb, 'orders', vo.id), sanitizeForFirestore(vo));
+        }
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `orders/${masterOrder.id}`);
     }
+
+    // Since Firestore succeeded, save to Local Storage
+    setToStorage(STORAGE_KEYS.PRODUCTS, allProducts);
+    setToStorage(STORAGE_KEYS.ORDERS, allStoredOrders);
 
     this.logAudit({
       businessId: vendorOrders.length === 1 ? vendorOrders[0].storeId : null,
@@ -2759,7 +2782,7 @@ export const db = {
     orders[idx] = currentOrder;
     setToStorage(STORAGE_KEYS.ORDERS, orders);
 
-    setDoc(doc(firestoreDb, 'orders', currentOrder.id), currentOrder, { merge: true }).catch((err) =>
+    setDoc(doc(firestoreDb, 'orders', currentOrder.id), sanitizeForFirestore(currentOrder), { merge: true }).catch((err) =>
       handleFirestoreError(err, OperationType.UPDATE, `orders/${currentOrder.id}`)
     );
 

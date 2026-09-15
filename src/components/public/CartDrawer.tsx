@@ -73,7 +73,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   const totalDeliveryCharges = Array.from(itemsByStore.values()).reduce((acc, group) => acc + group.deliveryCharge, 0);
   const grandTotal = subtotal + totalDeliveryCharges;
 
-  const handleCheckout = (e: React.FormEvent) => {
+  const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -104,7 +104,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
     try {
       setIsSubmitting(true);
-      const result = db.createOrder({
+      const result = await db.createOrder({
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim(),
         zilla: zilla.trim(),

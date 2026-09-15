@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   X,
   Search,
@@ -48,17 +48,7 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    if (initialOrderId && initialPhone) {
-      setOrderIdInput(initialOrderId);
-      setPhoneInput(initialPhone);
-      handleSearch(initialOrderId, initialPhone);
-    }
-  }, [initialOrderId, initialPhone, isOpen]);
-
-  if (!isOpen) return null;
-
-  const handleSearch = (ordId = orderIdInput, ph = phoneInput) => {
+  const handleSearch = useCallback((ordId = orderIdInput, ph = phoneInput) => {
     setErrorMessage('');
     if (!ordId.trim()) {
       setErrorMessage('Please enter your Order ID');
@@ -81,7 +71,21 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({
       }
       setIsLoading(false);
     }, 200);
-  };
+  }, [orderIdInput, phoneInput]);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (initialOrderId) setOrderIdInput(initialOrderId);
+      if (initialPhone) setPhoneInput(initialPhone);
+      if (initialOrderId && initialPhone) {
+        handleSearch(initialOrderId, initialPhone);
+      }
+    } else {
+      setSearched(false);
+      setErrorMessage('');
+      setFoundOrder(null);
+    }
+  }, [initialOrderId, initialPhone, isOpen, handleSearch]);
 
   const getStepIndex = (status: OrderStatus) => {
     if (status === 'Cancelled') return -1;
@@ -90,6 +94,8 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({
   };
 
   const currentStepIdx = foundOrder ? getStepIndex(foundOrder.orderStatus) : -1;
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
