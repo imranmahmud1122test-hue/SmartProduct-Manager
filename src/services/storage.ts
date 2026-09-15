@@ -15,6 +15,18 @@ import {
   OrderStatusHistory,
   AdminAnalytics
 } from '../types';
+import {
+  firestoreDb,
+  collection,
+  doc,
+  getDocs,
+  setDoc,
+  deleteDoc,
+  onSnapshot,
+  testFirestoreConnection,
+  handleFirestoreError,
+  OperationType
+} from './firebase';
 
 const STORAGE_KEYS = {
   USERS: 'ssm_users_v2',
@@ -810,6 +822,121 @@ export function notifyStorageUpdate(key?: string): void {
   }
 }
 
+let isFirestoreSyncActive = false;
+
+export async function syncWithFirestore(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  if (isFirestoreSyncActive) return;
+  isFirestoreSyncActive = true;
+
+  try {
+    await testFirestoreConnection();
+
+    // 1. Initial Products & Tenant Hydration from Firestore
+    try {
+      const prodSnap = await getDocs(collection(firestoreDb, 'products'));
+      if (prodSnap.empty) {
+        console.log('[Firestore] Cloud database empty. Bootstrapping initial catalog...');
+        for (const p of INITIAL_PRODUCTS) {
+          await setDoc(doc(firestoreDb, 'products', p.id), p);
+        }
+        for (const b of INITIAL_BUSINESSES) {
+          await setDoc(doc(firestoreDb, 'businesses', b.id), b);
+        }
+        for (const u of INITIAL_USERS) {
+          await setDoc(doc(firestoreDb, 'users', u.id), u);
+        }
+        for (const o of INITIAL_ORDERS) {
+          await setDoc(doc(firestoreDb, 'orders', o.id), o);
+        }
+      } else {
+        const cloudProducts: Product[] = [];
+        prodSnap.forEach((docSnap) => {
+          cloudProducts.push(docSnap.data() as Product);
+        });
+        if (cloudProducts.length > 0) {
+          setToStorage(STORAGE_KEYS.PRODUCTS, cloudProducts);
+          console.log(`[Firestore] Hydrated ${cloudProducts.length} live products from Cloud Firestore.`);
+        }
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, 'products');
+    }
+
+    // 2. Hydrate Businesses from Firestore
+    try {
+      const bizSnap = await getDocs(collection(firestoreDb, 'businesses'));
+      if (!bizSnap.empty) {
+        const cloudBiz: Business[] = [];
+        bizSnap.forEach((docSnap) => cloudBiz.push(docSnap.data() as Business));
+        setToStorage(STORAGE_KEYS.BUSINESSES, cloudBiz);
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, 'businesses');
+    }
+
+    // 3. Hydrate Orders from Firestore
+    try {
+      const ordSnap = await getDocs(collection(firestoreDb, 'orders'));
+      if (!ordSnap.empty) {
+        const cloudOrders: Order[] = [];
+        ordSnap.forEach((docSnap) => cloudOrders.push(docSnap.data() as Order));
+        setToStorage(STORAGE_KEYS.ORDERS, cloudOrders);
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, 'orders');
+    }
+
+    // 4. Hydrate Users from Firestore
+    try {
+      const usrSnap = await getDocs(collection(firestoreDb, 'users'));
+      if (!usrSnap.empty) {
+        const cloudUsers: User[] = [];
+        usrSnap.forEach((docSnap) => cloudUsers.push(docSnap.data() as User));
+        setToStorage(STORAGE_KEYS.USERS, cloudUsers);
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, 'users');
+    }
+
+    // 5. Real-time Listeners for instant multi-device / multi-environment sync
+    onSnapshot(collection(firestoreDb, 'products'), (snapshot) => {
+      if (!snapshot.empty) {
+        const liveProducts: Product[] = [];
+        snapshot.forEach((docSnap) => liveProducts.push(docSnap.data() as Product));
+        setToStorage(STORAGE_KEYS.PRODUCTS, liveProducts);
+      }
+    }, (err) => handleFirestoreError(err, OperationType.GET, 'products'));
+
+    onSnapshot(collection(firestoreDb, 'businesses'), (snapshot) => {
+      if (!snapshot.empty) {
+        const liveBusinesses: Business[] = [];
+        snapshot.forEach((docSnap) => liveBusinesses.push(docSnap.data() as Business));
+        setToStorage(STORAGE_KEYS.BUSINESSES, liveBusinesses);
+      }
+    }, (err) => handleFirestoreError(err, OperationType.GET, 'businesses'));
+
+    onSnapshot(collection(firestoreDb, 'orders'), (snapshot) => {
+      if (!snapshot.empty) {
+        const liveOrders: Order[] = [];
+        snapshot.forEach((docSnap) => liveOrders.push(docSnap.data() as Order));
+        setToStorage(STORAGE_KEYS.ORDERS, liveOrders);
+      }
+    }, (err) => handleFirestoreError(err, OperationType.GET, 'orders'));
+
+    onSnapshot(collection(firestoreDb, 'users'), (snapshot) => {
+      if (!snapshot.empty) {
+        const liveUsers: User[] = [];
+        snapshot.forEach((docSnap) => liveUsers.push(docSnap.data() as User));
+        setToStorage(STORAGE_KEYS.USERS, liveUsers);
+      }
+    }, (err) => handleFirestoreError(err, OperationType.GET, 'users'));
+
+  } catch (globalErr) {
+    console.warn('[Firestore] Sync notice:', globalErr);
+  }
+}
+
 // Ensure database initialization
 export function initializeStorage(): void {
   if (!localStorage.getItem(STORAGE_KEYS.USERS)) {
@@ -873,6 +1000,9 @@ export function initializeStorage(): void {
   if (!localStorage.getItem(STORAGE_KEYS.ORDERS)) {
     localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(INITIAL_ORDERS));
   }
+
+  // Auto-connect and sync live Cloud Firestore
+  syncWithFirestore().catch((e) => console.error('[Firestore] Initialization error:', e));
 }
 
 // Data Access Layer (Repository)
@@ -1033,6 +1163,14 @@ export const db = {
     setToStorage(STORAGE_KEYS.BUSINESSES, businesses);
     setToStorage(STORAGE_KEYS.USERS, users);
 
+    // Save to Firestore
+    setDoc(doc(firestoreDb, 'businesses', newBusiness.id), newBusiness).catch((err) =>
+      handleFirestoreError(err, OperationType.CREATE, `businesses/${newBusiness.id}`)
+    );
+    setDoc(doc(firestoreDb, 'users', newUser.id), newUser).catch((err) =>
+      handleFirestoreError(err, OperationType.CREATE, `users/${newUser.id}`)
+    );
+
     this.logAudit({
       businessId,
       businessName: finalBusinessName,
@@ -1053,6 +1191,11 @@ export const db = {
 
     businesses[index] = { ...businesses[index], ...updates };
     setToStorage(STORAGE_KEYS.BUSINESSES, businesses);
+
+    // Update in Firestore
+    setDoc(doc(firestoreDb, 'businesses', businessId), businesses[index], { merge: true }).catch((err) =>
+      handleFirestoreError(err, OperationType.UPDATE, `businesses/${businessId}`)
+    );
 
     if (user) {
       this.logAudit({
@@ -1077,12 +1220,19 @@ export const db = {
     businesses[index].status = status;
     setToStorage(STORAGE_KEYS.BUSINESSES, businesses);
 
+    setDoc(doc(firestoreDb, 'businesses', businessId), { status }, { merge: true }).catch((err) =>
+      handleFirestoreError(err, OperationType.UPDATE, `businesses/${businessId}`)
+    );
+
     // Also update owner user status
     const users = this.getUsers();
     const ownerIndex = users.findIndex((u) => u.businessId === businessId);
     if (ownerIndex !== -1) {
       users[ownerIndex].status = status;
       setToStorage(STORAGE_KEYS.USERS, users);
+      setDoc(doc(firestoreDb, 'users', users[ownerIndex].id), { status }, { merge: true }).catch((err) =>
+        handleFirestoreError(err, OperationType.UPDATE, `users/${users[ownerIndex].id}`)
+      );
     }
 
     if (adminUser) {
@@ -1189,6 +1339,11 @@ export const db = {
     allProducts.push(newProduct);
     setToStorage(STORAGE_KEYS.PRODUCTS, allProducts);
 
+    // Save directly to Cloud Firestore
+    setDoc(doc(firestoreDb, 'products', newProduct.id), newProduct).catch((err) =>
+      handleFirestoreError(err, OperationType.CREATE, `products/${newProduct.id}`)
+    );
+
     // If opening stock > 0, log initial movement
     if (openingStock > 0) {
       this.logMovement({
@@ -1246,6 +1401,11 @@ export const db = {
 
     setToStorage(STORAGE_KEYS.PRODUCTS, allProducts);
 
+    // Update in Cloud Firestore
+    setDoc(doc(firestoreDb, 'products', productId), allProducts[index], { merge: true }).catch((err) =>
+      handleFirestoreError(err, OperationType.UPDATE, `products/${productId}`)
+    );
+
     this.logAudit({
       businessId: prev.businessId,
       userId: user.id,
@@ -1265,6 +1425,11 @@ export const db = {
 
     allProducts = allProducts.filter((p) => p.id !== productId);
     setToStorage(STORAGE_KEYS.PRODUCTS, allProducts);
+
+    // Delete from Cloud Firestore
+    deleteDoc(doc(firestoreDb, 'products', productId)).catch((err) =>
+      handleFirestoreError(err, OperationType.DELETE, `products/${productId}`)
+    );
 
     this.logAudit({
       businessId: target.businessId,
@@ -1554,6 +1719,11 @@ export const db = {
     };
     all.unshift(newMovement);
     setToStorage(STORAGE_KEYS.MOVEMENTS, all);
+
+    setDoc(doc(firestoreDb, 'movements', newMovement.id), newMovement).catch((err) =>
+      handleFirestoreError(err, OperationType.CREATE, `movements/${newMovement.id}`)
+    );
+
     return newMovement;
   },
 
@@ -2041,6 +2211,16 @@ export const db = {
 
     setToStorage(STORAGE_KEYS.ORDERS, allStoredOrders);
 
+    // Save orders to Cloud Firestore
+    setDoc(doc(firestoreDb, 'orders', masterOrder.id), masterOrder).catch((err) =>
+      handleFirestoreError(err, OperationType.CREATE, `orders/${masterOrder.id}`)
+    );
+    for (const vo of vendorOrders) {
+      setDoc(doc(firestoreDb, 'orders', vo.id), vo).catch((err) =>
+        handleFirestoreError(err, OperationType.CREATE, `orders/${vo.id}`)
+      );
+    }
+
     this.logAudit({
       businessId: vendorOrders.length === 1 ? vendorOrders[0].storeId : null,
       userId: 'PUBLIC_CUSTOMER',
@@ -2153,6 +2333,10 @@ export const db = {
 
     orders[idx] = currentOrder;
     setToStorage(STORAGE_KEYS.ORDERS, orders);
+
+    setDoc(doc(firestoreDb, 'orders', currentOrder.id), currentOrder, { merge: true }).catch((err) =>
+      handleFirestoreError(err, OperationType.UPDATE, `orders/${currentOrder.id}`)
+    );
 
     this.logAudit({
       businessId: currentOrder.storeId !== 'MULTI' ? currentOrder.storeId : null,

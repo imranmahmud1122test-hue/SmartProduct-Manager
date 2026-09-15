@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Products collection: Public catalog and store owners
+    match /products/{productId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Businesses collection: Multi-tenant supermarkets
+    match /businesses/{businessId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Orders collection: Customer orders across marketplace & merchants
+    match /orders/{orderId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Movements collection: Inventory audit logs
+    match /movements/{movementId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Users and auth documents
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    // Support tickets & settings
+    match /support_settings/{settingId} {
+      allow read, write: if true;
+    }
+
+    match /support_tickets/{ticketId} {
+      allow read, write: if true;
+    }
+
+    // Fallback rule
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

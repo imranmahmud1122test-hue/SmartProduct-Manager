@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { db } from './services/storage';
+import { db, initializeStorage } from './services/storage';
 import { User, Business, Product } from './types';
 
 // Components
@@ -55,16 +55,32 @@ export default function App() {
   // Force public view mode when logged in
   const [isViewingPublicMode, setIsViewingPublicMode] = useState(false);
 
-  // Initialize from storage
+  // Initialize from storage & sync
   useEffect(() => {
-    const user = db.getCurrentUser();
-    if (user) {
-      setCurrentUser(user);
-      if (user.businessId) {
-        const biz = db.getBusinessById(user.businessId);
-        setCurrentBusiness(biz);
+    initializeStorage();
+
+    const refreshSession = () => {
+      const user = db.getCurrentUser();
+      if (user) {
+        setCurrentUser(user);
+        if (user.businessId) {
+          const biz = db.getBusinessById(user.businessId);
+          setCurrentBusiness(biz || null);
+        }
       }
-    }
+      setDataVersion((v) => v + 1);
+    };
+
+    refreshSession();
+
+    const handleStorageUpdate = () => {
+      refreshSession();
+    };
+
+    window.addEventListener('spm_storage_update', handleStorageUpdate);
+    return () => {
+      window.removeEventListener('spm_storage_update', handleStorageUpdate);
+    };
   }, []);
 
   const handleLoginSuccess = (user: User) => {
