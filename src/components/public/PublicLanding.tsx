@@ -32,7 +32,11 @@ import {
   SlidersHorizontal,
   CreditCard,
   MapPin,
-  FileText
+  FileText,
+  LogIn,
+  Menu,
+  X,
+  User
 } from 'lucide-react';
 import { db } from '../../services/storage';
 import { Product, Business, CartItem, Order } from '../../types';
@@ -81,6 +85,7 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
   // Support modal state
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [supportModalTab, setSupportModalTab] = useState<'contact' | 'report'>('contact');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const { t } = useLanguage();
   const { toast } = useToast();
@@ -254,38 +259,44 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50">
+    <div className="min-h-screen pb-16 sm:pb-0 bg-gradient-to-b from-slate-50 via-white to-slate-50">
       {/* Top Navigation Bar */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Logo size="md" showTagline={true} />
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-1.5 sm:gap-4">
+          {/* Brand Logo with responsive mobile compactness */}
+          <div className="flex items-center space-x-1.5 sm:space-x-3 shrink-0">
+            <Logo size="md" showTagline={false} compactOnMobile />
           </div>
 
-          <div className="flex items-center space-x-2 sm:space-x-3">
-            <LanguageSwitcher variant="header" />
+          {/* Right Action Bar */}
+          <div className="flex items-center space-x-1.5 sm:space-x-3">
+            {/* Desktop Only: Language Switcher and Order Tracker */}
+            <div className="hidden md:flex items-center space-x-2">
+              <LanguageSwitcher variant="header" />
 
-            {/* Track Order Button */}
-            <button
-              onClick={() => {
-                setTrackParams({});
-                setIsTrackOrderOpen(true);
-              }}
-              className="hidden sm:inline-flex items-center px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-700 hover:text-emerald-700 bg-slate-100/80 hover:bg-emerald-50 transition-colors cursor-pointer"
-            >
-              <Truck className="w-4 h-4 mr-1.5 text-emerald-600" />
-              Track Order
-            </button>
+              {/* Track Order Button */}
+              <button
+                onClick={() => {
+                  setTrackParams({});
+                  setIsTrackOrderOpen(true);
+                }}
+                className="inline-flex items-center p-2 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-700 hover:text-emerald-700 bg-slate-100/80 hover:bg-emerald-50 transition-colors cursor-pointer"
+                title="Track Order"
+              >
+                <Truck className="w-4 h-4 mr-1.5 text-emerald-600" />
+                <span>Track Order</span>
+              </button>
+            </div>
 
-            {/* Shopping Bag Drawer Trigger */}
+            {/* Shopping Bag Drawer Trigger - Always visible */}
             <button
               onClick={() => setIsCartOpen(true)}
-              className="relative p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+              className="relative p-2 sm:p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer shrink-0"
               title="View Shopping Bag"
             >
-              <ShoppingBag className="w-5 h-5 text-slate-700" />
+              <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5 text-slate-700" />
               {totalCartCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-extrabold flex items-center justify-center animate-bounce shadow-xs">
+                <span className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-emerald-600 text-white text-[9px] sm:text-[10px] font-extrabold flex items-center justify-center animate-bounce shadow-xs">
                   {totalCartCount}
                 </span>
               )}
@@ -294,35 +305,144 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
             {currentUser ? (
               <button
                 onClick={onReturnToDashboard}
-                className="px-4 py-2 text-xs sm:text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all cursor-pointer shadow-xs"
+                className="px-2.5 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all cursor-pointer shadow-xs whitespace-nowrap"
               >
-                Go to Workspace ({currentUser.name})
+                <span className="hidden sm:inline">Go to Workspace </span>
+                <span className="sm:hidden">Workspace</span>
               </button>
             ) : (
-              <>
+              <div className="flex items-center space-x-1 sm:space-x-2">
+                {/* SIGN IN / LOGIN BUTTON - Always visible on mobile & desktop */}
                 <button
                   id="btn-nav-login"
                   onClick={onOpenLogin}
-                  className="px-4 py-2 text-sm font-bold text-slate-700 hover:text-slate-900 border border-slate-300 hover:border-slate-400 rounded-xl transition-all cursor-pointer"
+                  className="px-2 sm:px-3.5 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-slate-700 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-300 hover:border-slate-400 rounded-xl transition-all cursor-pointer whitespace-nowrap shadow-2xs flex items-center gap-1"
+                  title="Sign In to your store account"
                 >
-                  {t('signIn', 'Sign In')}
+                  <LogIn className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>{t('signIn', 'Sign In')}</span>
                 </button>
+
+                {/* REGISTER STORE BUTTON - Always visible on mobile & desktop */}
                 <button
                   id="btn-nav-register"
                   onClick={onOpenRegister}
-                  className="px-4 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm shadow-emerald-600/30 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                  className="px-2.5 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm shadow-emerald-600/30 rounded-xl transition-all flex items-center gap-1 sm:gap-1.5 cursor-pointer whitespace-nowrap"
+                  title="Register a new store on SPM"
                 >
-                  {t('registerBusiness', 'Register Store')}
-                  <ArrowRight className="w-4 h-4" />
+                  <Store className="w-3.5 h-3.5 shrink-0" />
+                  <span className="hidden xs:inline">{t('registerBusiness', 'Register Store')}</span>
+                  <span className="xs:hidden">Register</span>
+                  <ArrowRight className="hidden sm:inline w-3.5 h-3.5" />
                 </button>
-              </>
+              </div>
             )}
+
+            {/* Mobile Hamburger Menu Toggle Button (Visible on screens < md) */}
+            <button
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="md:hidden p-2 rounded-xl text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer shrink-0"
+              aria-label="Toggle Navigation Menu"
+            >
+              {isMobileMenuOpen ? <X className="w-4 h-4 text-slate-800" /> : <Menu className="w-4 h-4 text-slate-800" />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile Slide-down Menu Drawer */}
+        {isMobileMenuOpen && (
+          <div className="md:hidden border-t border-slate-200 bg-white px-4 py-3.5 space-y-3 shadow-xl animate-in slide-in-from-top-2 duration-150">
+            {/* Quick Auth Cards for Mobile */}
+            {!currentUser ? (
+              <div className="grid grid-cols-2 gap-2 pb-2.5 border-b border-slate-100">
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    onOpenLogin();
+                  }}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border border-slate-200 bg-slate-50 font-bold text-xs text-slate-800 hover:bg-slate-100 transition-colors"
+                >
+                  <LogIn className="w-4 h-4 text-emerald-600" />
+                  <span>{t('signIn', 'Sign In')}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    onOpenRegister();
+                  }}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-emerald-600 font-bold text-xs text-white shadow-xs hover:bg-emerald-700 transition-colors"
+                >
+                  <Store className="w-4 h-4" />
+                  <span>Register Store</span>
+                </button>
+              </div>
+            ) : (
+              <div className="pb-2.5 border-b border-slate-100">
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    onReturnToDashboard?.();
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-emerald-600 font-bold text-xs text-white shadow-xs"
+                >
+                  Go to Workspace ({currentUser.name})
+                </button>
+              </div>
+            )}
+
+            {/* Language Selection */}
+            <div className="flex items-center justify-between gap-2 py-1">
+              <span className="text-xs font-semibold text-slate-600">Language:</span>
+              <LanguageSwitcher variant="pill" />
+            </div>
+
+            {/* Quick Navigation Links */}
+            <button
+              onClick={() => {
+                setIsMobileMenuOpen(false);
+                setTrackParams({});
+                setIsTrackOrderOpen(true);
+              }}
+              className="w-full flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 text-xs font-bold transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Truck className="w-4 h-4 text-emerald-600" />
+                <span>Track an Order (Parcel Tracking)</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+            </button>
+
+            <a
+              href="#public-stock"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="w-full flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 text-xs font-bold transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <ShoppingBag className="w-4 h-4 text-emerald-600" />
+                <span>Shop Products Online</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+            </a>
+
+            <button
+              onClick={() => {
+                setIsMobileMenuOpen(false);
+                openSupport('contact');
+              }}
+              className="w-full flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <HelpCircle className="w-4 h-4 text-teal-600" />
+                <span>Help & Customer Support</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+            </button>
+          </div>
+        )}
       </header>
 
       {/* Hero Section */}
-      <section className="relative overflow-hidden pt-12 pb-16 lg:pt-20 lg:pb-24 border-b border-slate-200/60 bg-gradient-to-b from-emerald-50/40 via-white to-slate-50">
+      <section className="relative overflow-hidden pt-10 pb-14 lg:pt-20 lg:pb-24 border-b border-slate-200/60 bg-gradient-to-b from-emerald-50/40 via-white to-slate-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto">
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-100/80 text-emerald-800 text-xs font-semibold uppercase tracking-wider mb-6 border border-emerald-200">
@@ -334,37 +454,50 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
               <Logo size="xl" variant="full" showTagline={true} />
             </div>
 
-            <p className="mt-4 text-lg sm:text-xl text-slate-600 font-normal leading-relaxed">
+            <p className="mt-4 text-base sm:text-xl text-slate-600 font-normal leading-relaxed">
               Order fresh products directly from top supermarkets with fast home delivery, or register your own supermarket to manage products, inventory, POS, and online sales.
             </p>
 
-            {/* Main Action Buttons */}
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+            {/* Main Action Buttons: Full set of options for both shoppers and supermarket owners */}
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-2.5 sm:gap-4">
               <a
                 id="btn-hero-public-stock"
                 href="#public-stock"
-                className="px-6 py-3.5 text-base font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/25 rounded-xl transition-all flex items-center gap-2"
+                className="w-full sm:w-auto px-5 sm:px-6 py-3 sm:py-3.5 text-sm sm:text-base font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/25 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                <ShoppingBag className="w-5 h-5" />
+                <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5" />
                 Shop Products Online
               </a>
+
+              {!currentUser && (
+                <button
+                  id="btn-hero-login"
+                  onClick={onOpenLogin}
+                  className="w-full sm:w-auto px-5 sm:px-6 py-3 sm:py-3.5 text-sm sm:text-base font-bold text-slate-800 bg-white hover:bg-slate-50 border border-slate-300 shadow-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <LogIn className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600" />
+                  Store Owner Login
+                </button>
+              )}
+
+              <button
+                id="btn-hero-register"
+                onClick={onOpenRegister}
+                className="w-full sm:w-auto px-5 sm:px-6 py-3 sm:py-3.5 text-sm sm:text-base font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Store className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600" />
+                Register as Store Owner
+              </button>
+
               <button
                 onClick={() => {
                   setTrackParams({});
                   setIsTrackOrderOpen(true);
                 }}
-                className="px-6 py-3.5 text-base font-semibold text-slate-800 bg-white hover:bg-slate-50 border border-slate-300 shadow-xs rounded-xl transition-all flex items-center gap-2"
+                className="w-full sm:w-auto px-5 sm:px-6 py-3 sm:py-3.5 text-sm sm:text-base font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 shadow-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                <Truck className="w-5 h-5 text-emerald-600" />
+                <Truck className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600" />
                 Track an Order
-              </button>
-              <button
-                id="btn-hero-register"
-                onClick={onOpenRegister}
-                className="px-6 py-3.5 text-base font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-all flex items-center gap-2"
-              >
-                <Store className="w-5 h-5" />
-                Register as Store Owner
               </button>
             </div>
           </div>
@@ -945,6 +1078,73 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
         currentUser={currentUser}
         initialTab={supportModalTab}
       />
+
+      {/* Mobile Persistent Bottom Quick Action Bar (Visible on phones & small tablet screens) */}
+      <div className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 py-2 shadow-2xl flex items-center justify-around gap-1 no-print">
+        <a
+          href="#public-stock"
+          className="flex flex-col items-center justify-center p-1 text-slate-600 hover:text-emerald-600 transition-colors"
+        >
+          <ShoppingBag className="w-4 h-4" />
+          <span className="text-[10px] font-semibold mt-0.5">Shop</span>
+        </a>
+
+        <button
+          onClick={() => {
+            setTrackParams({});
+            setIsTrackOrderOpen(true);
+          }}
+          className="flex flex-col items-center justify-center p-1 text-slate-600 hover:text-emerald-600 transition-colors"
+        >
+          <Truck className="w-4 h-4" />
+          <span className="text-[10px] font-semibold mt-0.5">Track</span>
+        </button>
+
+        <button
+          onClick={() => setIsCartOpen(true)}
+          className="relative flex flex-col items-center justify-center p-1 text-slate-600 hover:text-emerald-600 transition-colors"
+        >
+          <div className="relative">
+            <ShoppingBag className="w-4 h-4" />
+            {totalCartCount > 0 && (
+              <span className="absolute -top-1 -right-2 w-3.5 h-3.5 rounded-full bg-emerald-600 text-white text-[8px] font-extrabold flex items-center justify-center">
+                {totalCartCount}
+              </span>
+            )}
+          </div>
+          <span className="text-[10px] font-semibold mt-0.5">Bag</span>
+        </button>
+
+        {currentUser ? (
+          <button
+            onClick={onReturnToDashboard}
+            className="flex flex-col items-center justify-center p-1 text-emerald-600 font-bold transition-colors"
+          >
+            <Building2 className="w-4 h-4" />
+            <span className="text-[10px] font-bold mt-0.5">Workspace</span>
+          </button>
+        ) : (
+          <div className="flex items-center gap-1.5 pl-1">
+            <button
+              id="btn-bottom-login"
+              onClick={onOpenLogin}
+              className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs transition-all shadow-2xs"
+            >
+              <LogIn className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Sign In</span>
+            </button>
+
+            <button
+              id="btn-bottom-register"
+              onClick={onOpenRegister}
+              className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs transition-all shadow-xs"
+            >
+              <Store className="w-3.5 h-3.5" />
+              <span>Register</span>
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

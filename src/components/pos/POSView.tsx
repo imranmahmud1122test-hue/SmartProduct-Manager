@@ -291,13 +291,13 @@ export const POSView: React.FC<POSViewProps> = ({
   return (
     <div className="space-y-6">
       {/* View Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-200 shadow-xs">
         <div className="flex items-center space-x-3">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shadow-xs">
-            <ShoppingBag className="w-6 h-6" />
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shadow-xs shrink-0">
+            <ShoppingBag className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">{t('posTitle', 'Point of Sale (POS Register)')}</h1>
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">{t('posTitle', 'Point of Sale (POS Register)')}</h1>
             <p className="text-xs text-slate-500 mt-0.5">
               {t('posSubtitle', 'Live Checkout • Automatic Inventory Decrements • Receipt Printing')}
             </p>
@@ -305,7 +305,7 @@ export const POSView: React.FC<POSViewProps> = ({
         </div>
 
         {/* Barcode Quick Scan Bar */}
-        <form onSubmit={handleBarcodeSubmit} className="flex gap-2 max-w-md w-full">
+        <form onSubmit={handleBarcodeSubmit} className="flex gap-2 w-full sm:max-w-md">
           <div className="relative flex-1">
             <ScanBarcode className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
@@ -318,12 +318,31 @@ export const POSView: React.FC<POSViewProps> = ({
           </div>
           <button
             type="submit"
-            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors"
+            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0"
           >
             + {t('addProduct', 'Add')}
           </button>
         </form>
       </div>
+
+      {/* Mobile Cart Floating Anchor (Visible only on mobile when items in cart) */}
+      {cart.length > 0 && (
+        <div className="lg:hidden sticky top-2 z-30 bg-emerald-700 text-white p-3 rounded-2xl shadow-lg flex items-center justify-between animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2">
+            <Receipt className="w-4 h-4 text-emerald-200" />
+            <span className="text-xs font-bold">{cart.reduce((a, c) => a + c.quantity, 0)} items in cart</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-black">{formatCurrency(totalAmount, currency)}</span>
+            <a
+              href="#pos-cart-section"
+              className="px-3 py-1 bg-white text-emerald-800 font-extrabold text-xs rounded-xl shadow-xs"
+            >
+              Checkout ↓
+            </a>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs font-semibold text-rose-700 flex items-center gap-2">
@@ -367,7 +386,7 @@ export const POSView: React.FC<POSViewProps> = ({
           </div>
 
           {/* Product Cards Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[600px] overflow-y-auto pr-1">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3 max-h-[600px] overflow-y-auto pr-1">
             {filteredProducts.map((p) => {
               const inStock = p.currentStock > 0;
               const isLow = inStock && p.currentStock <= p.minStockLevel;
@@ -431,7 +450,7 @@ export const POSView: React.FC<POSViewProps> = ({
         </div>
 
         {/* Right Column: Active POS Cash Register Cart */}
-        <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between">
+        <div id="pos-cart-section" className="lg:col-span-5 bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-6 flex flex-col justify-between scroll-mt-20">
           <div>
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <div className="flex items-center space-x-2">

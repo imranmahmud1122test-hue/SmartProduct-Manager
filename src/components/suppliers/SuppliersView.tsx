@@ -124,13 +124,13 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({ businessId }) => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-200 shadow-xs">
         <div>
           <div className="flex items-center space-x-2">
             <span className="p-2 rounded-xl bg-cyan-50 text-cyan-600 border border-cyan-100">
               <Truck className="w-5 h-5" />
             </span>
-            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Suppliers & Distributors</h1>
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">Suppliers & Distributors</h1>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
             Manage vendors, wholesale delivery contacts, and purchase shipment origins.
@@ -139,7 +139,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({ businessId }) => {
 
         <button
           onClick={handleOpenAdd}
-          className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center gap-1.5 self-start sm:self-auto"
+          className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-1.5 self-start sm:self-auto cursor-pointer"
         >
           <Plus className="w-4 h-4" /> Add New Supplier
         </button>
@@ -160,9 +160,9 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({ businessId }) => {
       </div>
 
       {/* Supplier Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
         {filtered.length === 0 ? (
-          <div className="col-span-full py-12 text-center text-slate-400 bg-white rounded-3xl border border-slate-200">
+          <div className="col-span-full py-12 text-center text-slate-400 bg-white rounded-2xl sm:rounded-3xl border border-slate-200">
             <Truck className="w-10 h-10 mx-auto text-slate-300 mb-2 stroke-1" />
             <p className="text-sm font-semibold text-slate-600">No suppliers found.</p>
           </div>
@@ -175,7 +175,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({ businessId }) => {
             return (
               <div
                 key={sup.id}
-                className="bg-white rounded-3xl border border-slate-200 p-5 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between space-y-4"
+                className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 p-4 sm:p-5 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between space-y-4"
               >
                 <div className="space-y-3">
                   <div className="flex items-start justify-between">

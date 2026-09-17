@@ -6,6 +6,7 @@ interface LogoProps {
   variant?: 'full' | 'horizontal' | 'mark' | 'badge';
   showTagline?: boolean;
   light?: boolean;
+  compactOnMobile?: boolean;
 }
 
 export const Logo: React.FC<LogoProps> = ({
@@ -14,6 +15,7 @@ export const Logo: React.FC<LogoProps> = ({
   variant = 'horizontal',
   showTagline = false,
   light = false,
+  compactOnMobile = false,
 }) => {
   // Dimension scales
   const dimensions = {
@@ -126,17 +128,21 @@ export const Logo: React.FC<LogoProps> = ({
   }
 
   // Default: Horizontal
+  const markS = compactOnMobile ? 32 : dimensions.markSize;
+
   return (
-    <div className={`flex items-center gap-2.5 ${className}`}>
-      <SvgMark s={dimensions.markSize} />
+    <div className={`flex items-center gap-1.5 sm:gap-2.5 shrink-0 ${className}`}>
+      <div className="shrink-0">
+        <SvgMark s={markS} />
+      </div>
       <div className="flex flex-col leading-tight">
-        <div className={`flex items-center gap-1 font-black tracking-tight ${dimensions.textSize}`}>
+        <div className={`flex items-center gap-0.5 sm:gap-1 font-black tracking-tight text-xs sm:${dimensions.textSize}`}>
           <span className={light ? 'text-white' : 'text-slate-900'}>Smart</span>
-          <span className="text-emerald-600">Product</span>
-          <span className="text-blue-600">Manager</span>
+          <span className={`${compactOnMobile ? 'hidden sm:inline' : ''} text-emerald-600`}>Product</span>
+          <span className={`${compactOnMobile ? 'hidden md:inline' : ''} text-blue-600`}>Manager</span>
         </div>
         {showTagline && (
-          <div className={`flex items-center gap-1 font-semibold tracking-wide ${dimensions.subSize} ${light ? 'text-slate-300' : 'text-slate-500'}`}>
+          <div className={`hidden sm:flex items-center gap-1 font-semibold tracking-wide ${dimensions.subSize} ${light ? 'text-slate-300' : 'text-slate-500'}`}>
             <span>Smart Stock</span>
             <span className="text-emerald-500 font-bold">|</span>
             <span>Smart Business</span>

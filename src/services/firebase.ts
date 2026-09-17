@@ -104,14 +104,22 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   }
 }
 
-// Test connection on boot
+// Test connection on boot with a fast timeout to prevent blocking when offline
 export async function testFirestoreConnection(): Promise<boolean> {
   try {
-    const q = query(collection(firestoreDb, 'products'), limit(1));
-    await getDocs(q);
+    const testDocRef = doc(firestoreDb, 'test', 'connection');
+    
+    // Race getDocFromServer against a 2.5-second timeout to check backend reachability
+    const networkPromise = getDocFromServer(testDocRef);
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Connection timeout')), 2500)
+    );
+
+    await Promise.race([networkPromise, timeoutPromise]);
     return true;
   } catch (error) {
-    console.warn('[Firestore] Initial connection probe notice:', error);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.warn('[Firestore] Connection probe could not reach backend. Running in offline/cached mode:', errMsg);
     return false;
   }
 }

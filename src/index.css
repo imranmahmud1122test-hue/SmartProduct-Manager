@@ -1,5 +1,58 @@
 @import "tailwindcss";
 
+/* Global responsive layout safeguards */
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100vw;
+  width: 100%;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  scroll-behavior: smooth;
+}
+
+#root {
+  min-height: 100vh;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Touch momentum scroll for horizontal tables and pill tabs on iOS/Android */
+.overflow-x-auto,
+.overflow-y-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Custom subtle scrollbar for tables & long modals */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Responsive utility classes */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .safe-bottom-padding {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
 /* Comprehensive print optimization styles */
 @media print {
   @page {

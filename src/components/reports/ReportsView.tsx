@@ -128,13 +128,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ businessId, business }
   return (
     <div id="reports-view-content" className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-200 shadow-xs">
         <div>
           <div className="flex items-center space-x-2">
             <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
               <FileText className="w-5 h-5" />
             </span>
-            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Business Reports & Audits</h1>
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">Business Reports & Audits</h1>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
             Audit sales, stock valuations, profit margins, and chronological inventory movements.
@@ -182,21 +182,21 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ businessId, business }
       </div>
 
       {/* Report Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-200">
         <button
           onClick={() => setActiveTab('sales')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
             activeTab === 'sales'
               ? 'bg-slate-900 text-white shadow-xs'
               : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
           }`}
         >
-          <ShoppingBag className="w-3.5 h-3.5" /> Sales & Orders Report
+          <ShoppingBag className="w-3.5 h-3.5" /> Sales & Orders
         </button>
 
         <button
           onClick={() => setActiveTab('inventory')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
             activeTab === 'inventory'
               ? 'bg-slate-900 text-white shadow-xs'
               : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -207,24 +207,24 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ businessId, business }
 
         <button
           onClick={() => setActiveTab('profit')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
             activeTab === 'profit'
               ? 'bg-slate-900 text-white shadow-xs'
               : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
           }`}
         >
-          <TrendingUp className="w-3.5 h-3.5" /> Profit & Margin Analysis
+          <TrendingUp className="w-3.5 h-3.5" /> Profit & Margins
         </button>
 
         <button
           onClick={() => setActiveTab('movements')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
             activeTab === 'movements'
               ? 'bg-slate-900 text-white shadow-xs'
               : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
           }`}
         >
-          <Layers className="w-3.5 h-3.5" /> All Inventory Movements ({movements.length})
+          <Layers className="w-3.5 h-3.5" /> Movements ({movements.length})
         </button>
       </div>
 

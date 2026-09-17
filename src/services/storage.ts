@@ -927,7 +927,12 @@ export async function syncWithFirestore(): Promise<void> {
   isFirestoreSyncActive = true;
 
   try {
-    await testFirestoreConnection();
+    const isOnline = await testFirestoreConnection();
+    if (!isOnline) {
+      console.warn('[Firestore] Backend could not be reached. Operating strictly in local-first cached mode.');
+      isFirestoreSyncActive = false;
+      return;
+    }
 
     // 1. Initial Products & Tenant Hydration from Firestore
     try {

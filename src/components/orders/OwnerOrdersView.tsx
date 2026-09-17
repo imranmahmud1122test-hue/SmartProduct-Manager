@@ -198,13 +198,13 @@ export const OwnerOrdersView: React.FC<OwnerOrdersViewProps> = ({
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Top Banner / Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-200 shadow-xs">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100/80 text-emerald-800 text-xs font-semibold mb-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100/80 text-emerald-800 text-xs font-semibold mb-1 sm:mb-2">
             <ShoppingBag className="w-3.5 h-3.5 text-emerald-700" />
             Store Orders Management & Fulfillment
           </div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
             Customer Online Orders
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -216,7 +216,7 @@ export const OwnerOrdersView: React.FC<OwnerOrdersViewProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={loadOrders}
-            className="px-3.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl shadow-xs transition-all flex items-center gap-1.5"
+            className="px-3.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
             Refresh Orders
@@ -225,50 +225,50 @@ export const OwnerOrdersView: React.FC<OwnerOrdersViewProps> = ({
       </div>
 
       {/* Metric Cards Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Total Orders</span>
-            <span className="text-xl font-extrabold text-slate-900 mt-1 block">{orders.length}</span>
-            <span className="text-[11px] text-emerald-600 font-semibold mt-0.5 block">
-              {formatCurrency(totalRevenue)} revenue
+            <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Total Orders</span>
+            <span className="text-lg sm:text-xl font-extrabold text-slate-900 mt-0.5 sm:mt-1 block">{orders.length}</span>
+            <span className="text-[10px] sm:text-[11px] text-emerald-600 font-semibold mt-0.5 block truncate">
+              {formatCurrency(totalRevenue)} rev
             </span>
           </div>
-          <div className="w-11 h-11 rounded-xl bg-slate-100 flex items-center justify-center text-slate-700">
-            <ShoppingBag className="w-5 h-5" />
+          <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-slate-100 flex items-center justify-center text-slate-700 shrink-0">
+            <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
+        <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-[11px] font-bold text-amber-600 uppercase tracking-wider block">Pending Approval</span>
-            <span className="text-xl font-extrabold text-amber-700 mt-1 block">{pendingCount}</span>
-            <span className="text-[11px] text-slate-400 block mt-0.5">Action required</span>
+            <span className="text-[10px] sm:text-[11px] font-bold text-amber-600 uppercase tracking-wider block">Pending</span>
+            <span className="text-lg sm:text-xl font-extrabold text-amber-700 mt-0.5 sm:mt-1 block">{pendingCount}</span>
+            <span className="text-[10px] sm:text-[11px] text-slate-400 block mt-0.5">Action required</span>
           </div>
-          <div className="w-11 h-11 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
-            <Clock className="w-5 h-5" />
+          <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+            <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
+        <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider block">Processing / Out</span>
-            <span className="text-xl font-extrabold text-indigo-700 mt-1 block">{processingCount}</span>
-            <span className="text-[11px] text-slate-400 block mt-0.5">In fulfillment</span>
+            <span className="text-[10px] sm:text-[11px] font-bold text-indigo-600 uppercase tracking-wider block">Processing</span>
+            <span className="text-lg sm:text-xl font-extrabold text-indigo-700 mt-0.5 sm:mt-1 block">{processingCount}</span>
+            <span className="text-[10px] sm:text-[11px] text-slate-400 block mt-0.5">In fulfillment</span>
           </div>
-          <div className="w-11 h-11 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center">
-            <Truck className="w-5 h-5" />
+          <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+            <Truck className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
+        <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block">Delivered</span>
-            <span className="text-xl font-extrabold text-emerald-700 mt-1 block">{deliveredCount}</span>
-            <span className="text-[11px] text-slate-400 block mt-0.5">{cancelledCount} cancelled</span>
+            <span className="text-[10px] sm:text-[11px] font-bold text-emerald-600 uppercase tracking-wider block">Delivered</span>
+            <span className="text-lg sm:text-xl font-extrabold text-emerald-700 mt-0.5 sm:mt-1 block">{deliveredCount}</span>
+            <span className="text-[10px] sm:text-[11px] text-slate-400 block mt-0.5">{cancelledCount} cancelled</span>
           </div>
-          <div className="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
-            <CheckCircle2 className="w-5 h-5" />
+          <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+            <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
         </div>
       </div>
@@ -335,7 +335,7 @@ export const OwnerOrdersView: React.FC<OwnerOrdersViewProps> = ({
         </div>
       </div>
 
-      {/* Orders Table */}
+      {/* Orders Container */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
         {filteredOrders.length === 0 ? (
           <div className="text-center py-16 px-4">
@@ -346,8 +346,97 @@ export const OwnerOrdersView: React.FC<OwnerOrdersViewProps> = ({
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
+          <>
+            {/* Mobile Cards View (Optimized for Phones) */}
+            <div className="block md:hidden divide-y divide-slate-100">
+              {filteredOrders.map((order) => {
+                const statusInfo = STATUS_CONFIG[order.orderStatus] || STATUS_CONFIG.Pending;
+
+                return (
+                  <div key={order.orderId} className="p-4 space-y-3">
+                    {/* Card Top: Order ID, Date & Status */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <span className="font-mono font-bold text-slate-900 text-sm">{order.orderId}</span>
+                        <span className="text-[10px] text-slate-400 block">
+                          {new Date(order.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}{' '}
+                          {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${statusInfo.bg} ${statusInfo.text} ${statusInfo.border}`}
+                      >
+                        {statusInfo.icon}
+                        {statusInfo.label}
+                      </span>
+                    </div>
+
+                    {/* Customer & Address */}
+                    <div className="bg-slate-50 p-2.5 rounded-xl text-xs space-y-1 border border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-900">{order.customerName}</span>
+                        <a
+                          href={`tel:${order.customerPhone}`}
+                          className="text-emerald-700 font-semibold flex items-center gap-1"
+                        >
+                          <Phone className="w-3 h-3 text-emerald-600" />
+                          {order.customerPhone}
+                        </a>
+                      </div>
+                      <p className="text-[11px] text-slate-500 truncate">{order.deliveryAddress}</p>
+                    </div>
+
+                    {/* Ordered Items Preview */}
+                    <div className="text-xs space-y-1">
+                      {order.items.slice(0, 3).map((it, idx) => (
+                        <div key={idx} className="flex items-center justify-between text-slate-700">
+                          <span className="truncate max-w-[200px] text-slate-800">
+                            {it.quantity}× {it.productNameSnapshot}
+                          </span>
+                          <span className="font-mono text-slate-600">
+                            {formatCurrency(it.unitPriceSnapshot * it.quantity)}
+                          </span>
+                        </div>
+                      ))}
+                      {order.items.length > 3 && (
+                        <span className="text-[10px] text-slate-400 block font-medium">
+                          +{order.items.length - 3} more item(s)
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Amount & Actions */}
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">Total ({order.paymentMethod.replace(/_/g, ' ')})</span>
+                        <span className="font-black text-slate-900 text-sm">
+                          {formatCurrency(order.totalAmount)}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setSelectedOrder(order)}
+                          className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5" /> View
+                        </button>
+                        <button
+                          onClick={() => handlePrintInvoice(order)}
+                          className="px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <Printer className="w-3.5 h-3.5" /> Slip
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop & Tablet Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs min-w-[760px]">
               <thead>
                 <tr className="bg-slate-50/80 border-b border-slate-200/80 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
                   <th className="py-3 px-4">Order ID & Date</th>
@@ -457,7 +546,8 @@ export const OwnerOrdersView: React.FC<OwnerOrdersViewProps> = ({
                 })}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </div>
 

@@ -109,40 +109,41 @@ export const BusinessLayout: React.FC<BusinessLayoutProps> = ({
 
       {/* Main Top Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-2xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2">
           {/* Brand & Store Identity */}
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="lg:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100 cursor-pointer"
+              className="lg:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100 cursor-pointer shrink-0"
+              aria-label="Toggle navigation menu"
             >
               {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
 
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
               {business?.logoUrl ? (
                 <img
                   src={business.logoUrl}
                   alt={business.name}
-                  className="w-9 h-9 rounded-xl object-cover border border-slate-200 shadow-2xs shrink-0"
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl object-cover border border-slate-200 shadow-2xs shrink-0"
                 />
               ) : (
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-black text-sm flex items-center justify-center shadow-2xs shrink-0">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-black text-xs sm:text-sm flex items-center justify-center shadow-2xs shrink-0">
                   {business?.name ? business.name.charAt(0).toUpperCase() : (currentUser.businessName?.charAt(0).toUpperCase() || 'S')}
                 </div>
               )}
-              <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="font-extrabold text-sm sm:text-base text-slate-900 leading-tight">
+              <div className="h-5 sm:h-6 w-px bg-slate-200 hidden sm:block"></div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                  <h1 className="font-extrabold text-xs sm:text-base text-slate-900 leading-tight truncate max-w-[130px] sm:max-w-xs md:max-w-none">
                     {business?.name || currentUser.businessName || t('brandName', 'Smart Product Manager')}
                   </h1>
-                  <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold font-mono">
+                  <span className="hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold font-mono shrink-0">
                     <ShieldCheck className="w-3 h-3 text-emerald-600" />
                     {business?.id || currentUser.businessId}
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-500 hidden sm:block">
+                <p className="text-[10px] sm:text-[11px] text-slate-500 hidden sm:block truncate">
                   {business?.businessType || 'Store'} • {business?.id || currentUser.businessId}
                 </p>
               </div>
@@ -150,33 +151,33 @@ export const BusinessLayout: React.FC<BusinessLayoutProps> = ({
           </div>
 
           {/* Right Header Station */}
-          <div className="flex items-center space-x-2 sm:space-x-3">
+          <div className="flex items-center space-x-1.5 sm:space-x-3 shrink-0">
             {/* Language Switcher */}
             <LanguageSwitcher variant="header" />
 
             {/* Public Store Preview Link */}
             <button
               onClick={onOpenPublicView}
-              className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              className="px-2.5 sm:px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
               title={t('viewPublicCatalog', 'View public stock page')}
             >
-              <Globe className="w-3.5 h-3.5 text-emerald-600" />
-              <span className="hidden md:inline">{t('publicCatalog', 'Public Stock Page')}</span>
+              <Globe className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span className="hidden sm:inline">{t('publicCatalog', 'Public Stock Page')}</span>
             </button>
 
             {/* User Profile Card & Logout */}
-            <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
-              <div className="w-8 h-8 rounded-full bg-slate-900 text-emerald-400 font-bold text-xs flex items-center justify-center shadow-2xs">
+            <div className="flex items-center gap-1.5 sm:gap-2 pl-1.5 sm:pl-2 border-l border-slate-200">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-900 text-emerald-400 font-bold text-xs flex items-center justify-center shadow-2xs shrink-0">
                 {currentUser.name.charAt(0).toUpperCase()}
               </div>
-              <div className="hidden lg:block text-left">
-                <span className="text-xs font-bold text-slate-900 block leading-tight">{currentUser.name}</span>
+              <div className="hidden xl:block text-left">
+                <span className="text-xs font-bold text-slate-900 block leading-tight truncate max-w-28">{currentUser.name}</span>
                 <span className="text-[10px] text-slate-400 uppercase font-semibold">{currentUser.role}</span>
               </div>
               <button
                 onClick={onLogout}
                 title={t('logout', 'Sign out of account')}
-                className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -309,9 +310,69 @@ export const BusinessLayout: React.FC<BusinessLayoutProps> = ({
       )}
 
       {/* Main Content Body */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 flex-1 w-full pb-24 lg:pb-8">
         {children}
       </main>
+
+      {/* Mobile Bottom Navigation Bar (Phone & Tablet) */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-lg px-2 py-1 flex items-center justify-around safe-bottom-padding no-print">
+        <button
+          onClick={() => onNavigate('dashboard')}
+          className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'dashboard' ? 'text-emerald-600 font-bold' : 'text-slate-500 font-medium hover:text-slate-800'
+          }`}
+        >
+          <LayoutDashboard className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5">{t('dashboard', 'Dashboard')}</span>
+        </button>
+
+        <button
+          onClick={() => onNavigate('products')}
+          className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'products' ? 'text-emerald-600 font-bold' : 'text-slate-500 font-medium hover:text-slate-800'
+          }`}
+        >
+          <Package className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5">{t('productsAndStock', 'Products')}</span>
+        </button>
+
+        <button
+          onClick={() => onNavigate('pos')}
+          className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'pos' ? 'text-emerald-600 font-bold' : 'text-slate-500 font-medium hover:text-slate-800'
+          }`}
+        >
+          <ShoppingBag className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5">{t('posRegister', 'POS')}</span>
+        </button>
+
+        <button
+          onClick={() => onNavigate('orders')}
+          className={`relative flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'orders' ? 'text-emerald-600 font-bold' : 'text-slate-500 font-medium hover:text-slate-800'
+          }`}
+        >
+          <ClipboardList className="w-5 h-5" />
+          {pendingOrdersCount > 0 && (
+            <span className="absolute top-0 right-1 w-4 h-4 bg-amber-500 text-white rounded-full text-[9px] font-extrabold flex items-center justify-center animate-pulse">
+              {pendingOrdersCount > 9 ? '9+' : pendingOrdersCount}
+            </span>
+          )}
+          <span className="text-[10px] mt-0.5">Orders</span>
+        </button>
+
+        <button
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+            isMobileMenuOpen || !['dashboard', 'products', 'pos', 'orders'].includes(activeTab)
+              ? 'text-emerald-600 font-bold'
+              : 'text-slate-500 font-medium hover:text-slate-800'
+          }`}
+        >
+          <Menu className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5">More</span>
+        </button>
+      </nav>
 
       {/* Comprehensive Professional Help & Support Footer */}
       <footer className="bg-slate-900 text-slate-300 border-t border-slate-800 py-10 mt-12 no-print">
