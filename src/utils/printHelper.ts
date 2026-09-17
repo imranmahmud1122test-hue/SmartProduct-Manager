@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { Business, InventoryMovement, Product, Sale } from '../types';
+import { Business, InventoryMovement, Order, Product, Sale } from '../types';
 import { formatCurrency, formatDate, formatShortDate, renderBarcodeToCanvas, generateQRCodeDataUrl } from './codeGenerators';
 
 /**
@@ -229,213 +229,490 @@ export async function downloadHtmlAsPDF(htmlContent: string, filename: string = 
 }
 
 /**
- * Executes a clean, isolated print job using a dedicated hidden iframe.
+ * Executes a clean, isolated print job.
  * This completely isolates the print document from the host web app,
  * preventing modal dark backdrops, background page bleed, or cut-offs.
+ * It directly triggers the browser's native print preview dialog (Save as PDF / Printer).
  */
-export function printDocument(htmlContent: string, title: string = 'Print Document'): void {
-  const printableHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>${title}</title>
-  <style>
-    @page {
-      margin: 8mm;
-      size: auto;
-    }
-    * {
-      box-sizing: border-box;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-    body {
-      margin: 0;
-      padding: 16px;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      color: #0f172a;
-      background: #ffffff;
-      -webkit-font-smoothing: antialiased;
-    }
-    img {
-      max-width: 100%;
-      height: auto;
-    }
-    @media print {
-      body {
-        padding: 0;
-        margin: 0;
-      }
-    }
-  </style>
-</head>
-<body>
-  ${htmlContent}
-  <script>
-    window.addEventListener('load', function() {
-      setTimeout(function() {
-        window.focus();
-        window.print();
-      }, 250);
-    });
-  </script>
-</body>
-</html>`;
-
-  // Try opening a pop-up window first (triggers Chrome's native system print preview dialog reliably)
-  let printWin: Window | null = null;
-  try {
-    printWin = window.open('', '_blank', 'width=900,height=750,top=80,left=120');
-  } catch (err) {
-    console.warn('Could not open print window directly:', err);
+export function printDocument(htmlContent: string, title: string = 'Document'): void {
+  let mount = document.getElementById('spm-print-mount');
+  if (!mount) {
+    mount = document.createElement('div');
+    mount.id = 'spm-print-mount';
+    document.body.appendChild(mount);
   }
+  mount.innerHTML = htmlContent;
 
-  if (printWin) {
+  document.body.classList.add('is-printing-isolated');
+  const prevTitle = document.title;
+  document.title = title;
+
+  let cleanedUp = false;
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    document.body.classList.remove('is-printing-isolated');
+    document.title = prevTitle;
+    window.removeEventListener('afterprint', cleanup);
+  };
+
+  window.addEventListener('afterprint', cleanup);
+
+  // Directly trigger native window.print()
+  setTimeout(() => {
     try {
-      printWin.document.open();
-      printWin.document.write(printableHtml);
-      printWin.document.close();
-      printWin.focus();
-
-      // Additional fallback print trigger
-      setTimeout(() => {
-        try {
-          if (printWin && !printWin.closed) {
-            printWin.focus();
-            printWin.print();
-          }
-        } catch (e) {
-          console.warn('Direct print window trigger:', e);
-        }
-      }, 350);
-      return;
+      window.focus();
+      window.print();
     } catch (e) {
-      console.warn('Failed writing to print window, falling back to overlay container:', e);
+      console.warn('Native window.print() exception:', e);
     }
-  }
+    // Fallback cleanup timer in case afterprint does not fire
+    setTimeout(cleanup, 3000);
+  }, 100);
+}
 
-  // Fallback: If popups are blocked by browser iframe policies, inject printable overlay container
-  try {
-    const existing = document.getElementById('spm-print-container');
-    if (existing && existing.parentNode) {
-      existing.parentNode.removeChild(existing);
-    }
+/**
+ * Generates an official Steadfast / Courier Delivery Consignment Manifest
+ * for bulk dispatching and rider handover.
+ */
+export function printCourierManifest(
+  orders: Order[],
+  business: Business | null = null,
+  statusFilterLabel: string = 'All Consignments'
+): void {
+  const currency = business?.currencySymbol || '৳';
+  const storeName = business?.name || 'Smart Product Store';
+  const storePhone = business?.phone || '';
+  const storeAddress = business?.address || '';
 
-    const container = document.createElement('div');
-    container.id = 'spm-print-container';
-    container.className = 'spm-print-only-container';
-    container.innerHTML = `
-      <style>
-        @media screen {
-          .spm-print-only-container {
-            position: fixed;
-            inset: 0;
-            z-index: 999999;
-            background: rgba(15, 23, 42, 0.85);
-            backdrop-filter: blur(4px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 24px;
-            overflow: auto;
-          }
-          .spm-print-paper {
-            background: #ffffff;
-            border-radius: 16px;
-            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
-            max-width: 850px;
-            width: 100%;
-            max-height: 90vh;
-            overflow-y: auto;
-            padding: 24px;
-            position: relative;
-          }
-          .spm-print-header-bar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 20px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid #e2e8f0;
-          }
-          .spm-print-btn-main {
-            background: #047857;
-            color: #ffffff;
-            font-weight: 700;
-            font-size: 13px;
-            padding: 8px 18px;
-            border-radius: 10px;
-            border: none;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-          }
-          .spm-print-btn-close {
-            background: #cbd5e1;
-            color: #0f172a;
-            font-weight: 600;
-            font-size: 13px;
-            padding: 8px 14px;
-            border-radius: 10px;
-            border: none;
-            cursor: pointer;
-          }
-        }
-        @media print {
-          body > *:not(.spm-print-only-container) {
-            display: none !important;
-          }
-          .spm-print-only-container {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            height: auto !important;
-            background: none !important;
-            padding: 0 !important;
-            margin: 0 !important;
-          }
-          .spm-print-header-bar {
-            display: none !important;
-          }
-          .spm-print-paper {
-            box-shadow: none !important;
-            border-radius: 0 !important;
-            padding: 0 !important;
-            max-width: 100% !important;
-            max-height: none !important;
-            overflow: visible !important;
-          }
-        }
-      </style>
-      <div class="spm-print-paper">
-        <div class="spm-print-header-bar">
-          <div style="font-weight: 700; font-size: 14px; color: #0f172a;">${title}</div>
-          <div style="display: flex; gap: 8px;">
-            <button class="spm-print-btn-main" onclick="window.print()">
-              🖨️ Open Native Print Dialog / Save PDF
-            </button>
-            <button class="spm-print-btn-close" onclick="document.getElementById('spm-print-container').remove()">
-              Close
-            </button>
+  const totalCodValue = orders.reduce((sum, o) => sum + o.totalAmount, 0);
+  const totalDeliveryCharges = orders.reduce((sum, o) => sum + (o.deliveryCharge || 0), 0);
+
+  const orderRows = orders
+    .map((order, idx) => {
+      let barcodeUrl = '';
+      try {
+        const canvas = document.createElement('canvas');
+        renderBarcodeToCanvas(canvas, order.orderId, 'CODE128');
+        barcodeUrl = canvas.toDataURL('image/png');
+      } catch (e) {
+        console.warn('Barcode gen error:', e);
+      }
+
+      const itemsSummary = order.items.map((it) => `${it.quantity}× ${it.productNameSnapshot}`).join(', ');
+
+      return `
+        <div style="border-bottom: 1.5px solid #e2e8f0; padding: 14px 10px; page-break-inside: avoid; display: grid; grid-template-columns: 35px 170px 1fr 130px 100px; gap: 12px; align-items: center; font-size: 11px;">
+          <!-- Serial # -->
+          <div style="font-weight: 800; color: #64748b; text-align: center; font-size: 12px;">
+            ${idx + 1}
+          </div>
+
+          <!-- Consignment Number / Order ID & Date -->
+          <div>
+            <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 600;">Date:</div>
+            <div style="font-size: 11px; font-weight: 700; color: #0f172a; margin-bottom: 3px;">
+              ${formatDate(order.createdAt)}
+            </div>
+            <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase;">
+              CN# <span style="font-family: monospace; font-size: 12px; font-weight: 900; color: #0f172a;">${order.orderId}</span>
+            </div>
+            ${
+              barcodeUrl
+                ? `<div style="margin-top: 4px;"><img src="${barcodeUrl}" alt="${order.orderId}" style="height: 28px; max-width: 140px;" /></div>`
+                : ''
+            }
+          </div>
+
+          <!-- Recipient Details & Items -->
+          <div>
+            <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 600;">Recipient:</div>
+            <div style="font-size: 13px; font-weight: 800; color: #0f172a;">
+              ${order.customerName}
+            </div>
+            <div style="font-size: 11px; font-weight: 700; color: #047857; margin-top: 1px;">
+              📞 ${order.customerPhone}
+            </div>
+            <div style="font-size: 11px; color: #334155; margin-top: 2px; line-height: 1.3;">
+              📍 ${order.deliveryAddress}
+            </div>
+            <div style="font-size: 10px; color: #64748b; margin-top: 4px; background: #f8fafc; padding: 3px 6px; border-radius: 4px; display: inline-block;">
+              <strong>Items:</strong> ${itemsSummary}
+            </div>
+          </div>
+
+          <!-- COD & Delivery Charge -->
+          <div style="text-align: right;">
+            <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 600;">COD Collection:</div>
+            <div style="font-size: 14px; font-weight: 900; color: #047857;">
+              ${formatCurrency(order.totalAmount, currency)}
+            </div>
+            <div style="font-size: 10px; color: #64748b; margin-top: 2px;">
+              Charge: <strong>${formatCurrency(order.deliveryCharge || 0, currency)}</strong>
+            </div>
+            <div style="font-size: 9px; color: #64748b; text-transform: uppercase;">
+              ${order.paymentMethod.replace(/_/g, ' ')}
+            </div>
+          </div>
+
+          <!-- Status & Verification -->
+          <div style="text-align: center;">
+            <span style="display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; ${
+              order.orderStatus === 'Confirmed'
+                ? 'background: #dcfce7; color: #166534; border: 1px solid #bbf7d0;'
+                : order.orderStatus === 'Pending'
+                ? 'background: #fef3c7; color: #92400e; border: 1px solid #fde68a;'
+                : 'background: #fee2e2; color: #991b1b; border: 1px solid #fecaca;'
+            }">
+              ${order.orderStatus}
+            </span>
+            <div style="margin-top: 6px; width: 18px; height: 18px; border: 1.5px solid #94a3b8; border-radius: 4px; margin-left: auto; margin-right: auto;" title="Dispatch Check"></div>
           </div>
         </div>
-        <div class="spm-print-body-content">
-          ${htmlContent}
+      `;
+    })
+    .join('');
+
+  const manifestHtml = `
+    <div style="max-width: 900px; margin: 0 auto; background: #ffffff; padding: 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; line-height: 1.4;">
+      
+      <!-- Top Store & Manifest Header -->
+      <div style="border-bottom: 2px solid #0f172a; padding-bottom: 14px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <h1 style="margin: 0; font-size: 22px; font-weight: 900; text-transform: uppercase; color: #0f172a;">${storeName}</h1>
+          ${storeAddress ? `<div style="font-size: 11px; color: #475569; margin-top: 2px;">${storeAddress}</div>` : ''}
+          ${storePhone ? `<div style="font-size: 11px; color: #475569;">Tel: ${storePhone}</div>` : ''}
+        </div>
+        <div style="text-align: right;">
+          <div style="display: inline-block; padding: 4px 14px; background: #0f172a; color: #ffffff; font-size: 11px; font-weight: 800; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.5px;">
+            COURIER CONSIGNMENT MANIFEST
+          </div>
+          <div style="font-size: 11px; color: #64748b; margin-top: 4px;">
+            Generated on: <strong>${formatDate(new Date().toISOString())}</strong>
+          </div>
+          <div style="font-size: 11px; font-weight: 700; color: #047857; margin-top: 1px;">
+            Filter: ${statusFilterLabel}
+          </div>
         </div>
       </div>
-    `;
 
-    document.body.appendChild(container);
+      <!-- Financial & Dispatch Summary KPIs -->
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px;">
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 14px;">
+          <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;">Total Consignments</div>
+          <div style="font-size: 20px; font-weight: 900; color: #0f172a; margin-top: 2px;">${orders.length}</div>
+        </div>
+        <div style="background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 10px; padding: 10px 14px;">
+          <div style="font-size: 10px; font-weight: 700; color: #047857; text-transform: uppercase;">Total COD To Collect</div>
+          <div style="font-size: 20px; font-weight: 900; color: #047857; margin-top: 2px;">${formatCurrency(totalCodValue, currency)}</div>
+        </div>
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 14px;">
+          <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;">Delivery Charges</div>
+          <div style="font-size: 20px; font-weight: 900; color: #334155; margin-top: 2px;">${formatCurrency(totalDeliveryCharges, currency)}</div>
+        </div>
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 14px;">
+          <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;">Courier Partner</div>
+          <div style="font-size: 14px; font-weight: 800; color: #0f172a; margin-top: 4px;">Steadfast / Pathao</div>
+        </div>
+      </div>
 
-    setTimeout(() => {
-      window.print();
-    }, 200);
-  } catch (err) {
-    console.error('Print container fallback failed:', err);
-    window.print();
+      <!-- Consignment Table Header -->
+      <div style="background: #0f172a; color: #ffffff; border-radius: 8px 8px 0 0; padding: 8px 10px; display: grid; grid-template-columns: 35px 170px 1fr 130px 100px; gap: 12px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">
+        <div style="text-align: center;">#</div>
+        <div>Date & Consignment #</div>
+        <div>Recipient & Delivery Address</div>
+        <div style="text-align: right;">COD & Delivery Fee</div>
+        <div style="text-align: center;">Status / Check</div>
+      </div>
+
+      <!-- Consignment Rows -->
+      <div style="border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px; margin-bottom: 24px;">
+        ${orders.length > 0 ? orderRows : `<div style="padding: 24px; text-align: center; color: #64748b;">No consignments matching criteria.</div>`}
+      </div>
+
+      <!-- Dispatch Signatures -->
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 30px; padding-top: 14px; border-top: 1px dashed #cbd5e1; font-size: 11px; color: #475569; text-align: center;">
+        <div>
+          <div style="height: 40px; border-bottom: 1.5px solid #94a3b8; margin-bottom: 6px;"></div>
+          <strong>Merchant Dispatcher Signature</strong>
+        </div>
+        <div>
+          <div style="height: 40px; border-bottom: 1.5px solid #94a3b8; margin-bottom: 6px;"></div>
+          <strong>Courier Rider Handover Signature</strong>
+        </div>
+        <div>
+          <div style="height: 40px; border-bottom: 1.5px solid #94a3b8; margin-bottom: 6px;"></div>
+          <strong>Hub Incharge / Verification</strong>
+        </div>
+      </div>
+
+    </div>
+  `;
+
+  printDocument(manifestHtml, `CourierManifest_${new Date().toISOString().split('T')[0]}`);
+}
+
+/**
+ * Generates an elegant, single-page official customer receipt & invoice for orders.
+ * Completely isolates print layout to prevent background app bleed.
+ */
+export function printOrderReceipt(order: Order, business: Business | null = null): void {
+  const currency = business?.currencySymbol || '৳';
+  const storeName = order.storeNameSnapshot || business?.name || 'Smart Product Store';
+  const storeAddress = business?.address || '';
+  const storePhone = business?.phone || '';
+  const storeEmail = business?.email || '';
+
+  // Barcode generation
+  let barcodeDataUrl = '';
+  try {
+    const canvas = document.createElement('canvas');
+    renderBarcodeToCanvas(canvas, order.orderId, 'CODE128');
+    barcodeDataUrl = canvas.toDataURL('image/png');
+  } catch (e) {
+    console.warn('Barcode generation error:', e);
   }
+
+  const itemsHtml = order.items
+    .map(
+      (item, idx) => `
+      <tr style="border-bottom: 1px solid #e2e8f0; font-size: 12px;">
+        <td style="padding: 8px 6px; text-align: center; color: #64748b; width: 30px;">${idx + 1}</td>
+        <td style="padding: 8px 6px;">
+          <div style="font-weight: 700; color: #0f172a; font-size: 13px;">${item.productNameSnapshot}</div>
+        </td>
+        <td style="padding: 8px 6px; text-align: center; font-weight: 700; color: #0f172a; width: 60px;">${item.quantity}</td>
+        <td style="padding: 8px 6px; text-align: right; width: 100px; color: #475569;">${formatCurrency(item.unitPriceSnapshot, currency)}</td>
+        <td style="padding: 8px 6px; text-align: right; font-weight: 800; color: #0f172a; width: 110px;">${formatCurrency(item.subtotal, currency)}</td>
+      </tr>
+    `
+    )
+    .join('');
+
+  const receiptHtml = `
+    <div style="max-width: 680px; margin: 0 auto; background: #ffffff; padding: 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; line-height: 1.4;">
+      
+      <!-- Store Brand Header -->
+      <div style="text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 14px; margin-bottom: 16px;">
+        <h1 style="margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; text-transform: uppercase; color: #0f172a;">${storeName}</h1>
+        ${storeAddress ? `<div style="font-size: 11px; color: #475569; margin-top: 3px;">${storeAddress}</div>` : ''}
+        ${storePhone || storeEmail ? `<div style="font-size: 11px; color: #475569; margin-top: 2px;">${[storePhone && `Tel: ${storePhone}`, storeEmail && `Email: ${storeEmail}`].filter(Boolean).join(' | ')}</div>` : ''}
+        
+        <div style="display: inline-block; margin-top: 10px; padding: 4px 16px; background: #0f172a; color: #ffffff; font-size: 11px; font-weight: 700; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.8px;">
+          CUSTOMER ORDER RECEIPT & INVOICE
+        </div>
+      </div>
+
+      <!-- Order ID & Key Details Bar -->
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <div>
+          <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Order ID</div>
+          <div style="font-size: 15px; font-weight: 800; font-family: monospace; color: #0f172a;">${order.orderId}</div>
+        </div>
+        <div>
+          <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Date & Time</div>
+          <div style="font-size: 12px; font-weight: 600; color: #0f172a;">${formatDate(order.createdAt)}</div>
+        </div>
+        <div>
+          <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Order Status</div>
+          <div style="font-size: 12px; font-weight: 700; color: #047857; text-transform: uppercase;">${order.orderStatus}</div>
+        </div>
+        <div>
+          <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Payment Method</div>
+          <div style="font-size: 12px; font-weight: 700; color: #0f172a; text-transform: uppercase;">${order.paymentMethod.replace(/_/g, ' ')}</div>
+        </div>
+      </div>
+
+      <!-- Customer & Delivery Information -->
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin-bottom: 16px;">
+        <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 4px;">
+          Delivery & Customer Information
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px;">
+          <div>
+            <span style="color: #64748b;">Customer Name:</span> <strong>${order.customerName}</strong>
+          </div>
+          <div>
+            <span style="color: #64748b;">Contact Phone:</span> <strong>${order.customerPhone}</strong>
+          </div>
+          <div style="grid-column: span 2;">
+            <span style="color: #64748b;">Delivery Address:</span> <strong>${order.deliveryAddress}</strong>
+          </div>
+          ${order.customerNote ? `<div style="grid-column: span 2; font-style: italic; color: #475569; background: #f8fafc; padding: 4px 8px; border-radius: 6px;"><span style="color: #64748b; font-style: normal; font-weight: 600;">Customer Note:</span> ${order.customerNote}</div>` : ''}
+        </div>
+      </div>
+
+      <!-- Items Table -->
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
+        <thead>
+          <tr style="background: #f1f5f9; border-top: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; font-size: 11px; text-transform: uppercase; color: #475569;">
+            <th style="padding: 8px 6px; text-align: center; width: 35px;">#</th>
+            <th style="padding: 8px 6px; text-align: left;">Product Item</th>
+            <th style="padding: 8px 6px; text-align: center; width: 60px;">Qty</th>
+            <th style="padding: 8px 6px; text-align: right; width: 100px;">Price</th>
+            <th style="padding: 8px 6px; text-align: right; width: 110px;">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemsHtml}
+        </tbody>
+      </table>
+
+      <!-- Financial Calculation Summary -->
+      <div style="display: flex; justify-content: flex-end; margin-bottom: 20px;">
+        <div style="width: 280px; font-size: 12px;">
+          <div style="display: flex; justify-content: space-between; padding: 4px 0; color: #475569;">
+            <span>Items Subtotal:</span>
+            <span style="font-weight: 600; color: #0f172a;">${formatCurrency(order.subtotal, currency)}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding: 4px 0; color: #475569;">
+            <span>Delivery Fee:</span>
+            <span style="font-weight: 600; color: #0f172a;">${formatCurrency(order.deliveryCharge, currency)}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding: 8px 0; margin-top: 4px; border-top: 2px solid #0f172a; border-bottom: 2px solid #0f172a; font-size: 15px; font-weight: 800; color: #0f172a;">
+            <span>Total Amount Due:</span>
+            <span style="color: #047857;">${formatCurrency(order.totalAmount, currency)}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Barcode & Tracking Instructions -->
+      <div style="border-top: 1px dashed #cbd5e1; padding-top: 14px; text-align: center;">
+        ${barcodeDataUrl ? `<div style="margin-bottom: 8px;"><img src="${barcodeDataUrl}" alt="Barcode" style="height: 44px; max-width: 220px;" /></div>` : ''}
+        <div style="font-size: 11px; font-weight: 700; color: #0f172a;">Thank you for your order!</div>
+        <div style="font-size: 10px; color: #64748b; margin-top: 3px;">
+          You can track this order online anytime using your Order ID: <strong>${order.orderId}</strong> and Phone: <strong>${order.customerPhone}</strong>
+        </div>
+      </div>
+
+    </div>
+  `;
+
+  printDocument(receiptHtml, `Receipt_${order.orderId}`);
+}
+
+/**
+ * Generates an official merchant Packing & Dispatch Slip for store order fulfillment.
+ */
+export function printOrderSlip(order: Order, business: Business | null = null): void {
+  const currency = business?.currencySymbol || '৳';
+  const storeName = order.storeNameSnapshot || business?.name || 'Smart Product Store';
+  const storeAddress = business?.address || '';
+  const storePhone = business?.phone || '';
+
+  // Barcode generation
+  let barcodeDataUrl = '';
+  try {
+    const canvas = document.createElement('canvas');
+    renderBarcodeToCanvas(canvas, order.orderId, 'CODE128');
+    barcodeDataUrl = canvas.toDataURL('image/png');
+  } catch (e) {
+    console.warn('Barcode generation warning:', e);
+  }
+
+  const itemsHtml = order.items
+    .map(
+      (item, idx) => `
+      <tr style="border-bottom: 1px solid #e2e8f0; font-size: 12px;">
+        <td style="padding: 8px 6px; text-align: center; width: 30px;">
+          <div style="width: 14px; height: 14px; border: 1.5px solid #64748b; border-radius: 2px; margin: 0 auto;"></div>
+        </td>
+        <td style="padding: 8px 6px; text-align: center; color: #64748b; width: 30px;">${idx + 1}</td>
+        <td style="padding: 8px 6px;">
+          <div style="font-weight: 700; color: #0f172a; font-size: 13px;">${item.productNameSnapshot}</div>
+        </td>
+        <td style="padding: 8px 6px; text-align: center; font-weight: 800; font-size: 13px; width: 60px;">${item.quantity}</td>
+        <td style="padding: 8px 6px; text-align: right; width: 90px; color: #475569;">${formatCurrency(item.unitPriceSnapshot, currency)}</td>
+        <td style="padding: 8px 6px; text-align: right; font-weight: 700; color: #0f172a; width: 100px;">${formatCurrency(item.subtotal, currency)}</td>
+      </tr>
+    `
+    )
+    .join('');
+
+  const slipHtml = `
+    <div style="max-width: 680px; margin: 0 auto; background: #ffffff; padding: 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; line-height: 1.4;">
+      
+      <!-- Store Header & Manifest Title -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 14px; margin-bottom: 16px;">
+        <div>
+          <h1 style="margin: 0; font-size: 20px; font-weight: 800; text-transform: uppercase;">${storeName}</h1>
+          ${storeAddress ? `<div style="font-size: 11px; color: #475569; margin-top: 2px;">${storeAddress}</div>` : ''}
+          ${storePhone ? `<div style="font-size: 11px; color: #475569;">Tel: ${storePhone}</div>` : ''}
+        </div>
+        <div style="text-align: right;">
+          <div style="display: inline-block; padding: 4px 12px; background: #047857; color: #ffffff; font-size: 11px; font-weight: 700; border-radius: 4px; text-transform: uppercase;">
+            PACKING & DISPATCH SLIP
+          </div>
+          <div style="font-size: 13px; font-weight: 800; font-family: monospace; margin-top: 4px;">${order.orderId}</div>
+          <div style="font-size: 10px; color: #64748b;">${formatDate(order.createdAt)}</div>
+        </div>
+      </div>
+
+      <!-- Shipping & Customer Box -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+        <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 14px; font-size: 11px;">
+          <div style="font-weight: 700; text-transform: uppercase; color: #64748b; margin-bottom: 4px;">SHIP TO / CUSTOMER</div>
+          <div style="font-size: 13px; font-weight: 800; color: #0f172a;">${order.customerName}</div>
+          <div style="font-size: 12px; font-weight: 700; color: #047857; margin-top: 2px;">📞 ${order.customerPhone}</div>
+          <div style="font-size: 11px; color: #334155; margin-top: 4px; line-height: 1.3;">📍 ${order.deliveryAddress}</div>
+          ${order.customerNote ? `<div style="margin-top: 6px; padding: 4px 8px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 10px;"><strong>Note:</strong> ${order.customerNote}</div>` : ''}
+        </div>
+
+        <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 14px; font-size: 11px;">
+          <div style="font-weight: 700; text-transform: uppercase; color: #64748b; margin-bottom: 4px;">ORDER & PAYMENT INFO</div>
+          <div>Status: <strong style="color: #047857; text-transform: uppercase;">${order.orderStatus}</strong></div>
+          <div style="margin-top: 2px;">Payment: <strong style="text-transform: uppercase;">${order.paymentMethod.replace(/_/g, ' ')}</strong></div>
+          <div style="margin-top: 2px;">Delivery Fee: <strong>${formatCurrency(order.deliveryCharge, currency)}</strong></div>
+          <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed #cbd5e1; font-size: 13px; font-weight: 800; color: #0f172a;">
+            Collection Due: <span style="color: #047857;">${formatCurrency(order.totalAmount, currency)}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Packing Checklist Table -->
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
+        <thead>
+          <tr style="background: #f1f5f9; border-top: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; font-size: 11px; text-transform: uppercase; color: #475569;">
+            <th style="padding: 8px 6px; text-align: center; width: 30px;">Check</th>
+            <th style="padding: 8px 6px; text-align: center; width: 30px;">#</th>
+            <th style="padding: 8px 6px; text-align: left;">Item Description</th>
+            <th style="padding: 8px 6px; text-align: center; width: 60px;">Packed Qty</th>
+            <th style="padding: 8px 6px; text-align: right; width: 90px;">Price</th>
+            <th style="padding: 8px 6px; text-align: right; width: 100px;">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemsHtml}
+        </tbody>
+      </table>
+
+      <!-- Dispatch Signatures -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 24px; padding-top: 12px; border-top: 1px dashed #cbd5e1; font-size: 10px; color: #64748b; text-align: center;">
+        <div>
+          <div style="height: 35px; border-bottom: 1px solid #94a3b8; margin-bottom: 4px;"></div>
+          <span>Packed By</span>
+        </div>
+        <div>
+          <div style="height: 35px; border-bottom: 1px solid #94a3b8; margin-bottom: 4px;"></div>
+          <span>Checked & Verified</span>
+        </div>
+        <div>
+          <div style="height: 35px; border-bottom: 1px solid #94a3b8; margin-bottom: 4px;"></div>
+          <span>Courier / Delivery Agent</span>
+        </div>
+      </div>
+
+      ${barcodeDataUrl ? `
+        <div style="text-align: center; margin-top: 16px;">
+          <img src="${barcodeDataUrl}" alt="Barcode" style="height: 40px; max-width: 220px;" />
+          <div style="font-size: 10px; font-family: monospace; color: #64748b; margin-top: 2px;">${order.orderId}</div>
+        </div>
+      ` : ''}
+
+    </div>
+  `;
+
+  printDocument(slipHtml, `PackingSlip_${order.orderId}`);
 }
 
 /**

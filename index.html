@@ -17,22 +17,60 @@
       body {
         font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
       }
+      @page {
+        margin: 8mm;
+        size: auto;
+      }
       @media print {
-        .no-print {
+        /* When isolated printing is active (receipts, slips, invoices, manifests, audits, catalogs) */
+        body.is-printing-isolated #root,
+        body.is-printing-isolated > *:not(#spm-print-mount) {
+          display: none !important;
+          visibility: hidden !important;
+          height: 0 !important;
+          max-height: 0 !important;
+          overflow: hidden !important;
+          position: absolute !important;
+          left: -9999px !important;
+        }
+        body.is-printing-isolated {
+          background: #ffffff !important;
+          color: #0f172a !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          overflow: visible !important;
+        }
+        body.is-printing-isolated #spm-print-mount {
+          display: block !important;
+          visibility: visible !important;
+          position: static !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: #ffffff !important;
+          color: #0f172a !important;
+        }
+
+        .no-print,
+        [data-no-print] {
           display: none !important;
         }
         .print-only {
           display: block !important;
         }
         body {
-          background: white !important;
-          color: black !important;
+          background: #ffffff !important;
+          color: #0f172a !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
         }
       }
     </style>
   </head>
   <body class="bg-slate-50 text-slate-900 antialiased selection:bg-emerald-500 selection:text-white min-h-screen">
     <div id="root"></div>
+    <div id="spm-print-mount" style="display: none;"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

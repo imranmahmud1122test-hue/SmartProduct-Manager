@@ -595,7 +595,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                               <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 text-[10px] font-bold uppercase">
                                 {order.paymentMethod}
                               </span>
-                              <span className={`block text-[10px] font-semibold mt-0.5 ${order.paymentStatus === 'Paid' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                              <span className={`block text-[10px] font-semibold mt-0.5 ${order.paymentStatus === 'paid' ? 'text-emerald-600' : 'text-amber-600'}`}>
                                 {order.paymentStatus}
                               </span>
                             </td>

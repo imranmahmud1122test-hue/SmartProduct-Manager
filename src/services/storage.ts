@@ -124,711 +124,15 @@ const INITIAL_USERS: User[] = [
     createdAt: '2026-01-01T00:00:00Z',
     status: 'active',
   },
-  {
-    id: 'USR-METRO',
-    email: 'owner@metro.com',
-    name: 'David Harris',
-    role: 'business_owner',
-    businessId: 'SHOP-001',
-    businessName: 'Metro Supermarket & Mart',
-    phone: '+880 1812-345678',
-    createdAt: '2026-02-10T09:00:00Z',
-    status: 'active',
-  },
-  {
-    id: 'USR-VALLEY',
-    email: 'owner@freshvalley.com',
-    name: 'Sarah Jenkins',
-    role: 'business_owner',
-    businessId: 'SHOP-002',
-    businessName: 'Fresh Valley Organic Market',
-    phone: '+880 1712-876543',
-    createdAt: '2026-03-01T10:30:00Z',
-    status: 'active',
-  },
 ];
 
-const INITIAL_BUSINESSES: Business[] = [
-  {
-    id: 'SHOP-001',
-    name: 'Metro Supermarket & Mart',
-    ownerName: 'David Harris',
-    ownerId: 'USR-METRO',
-    email: 'owner@metro.com',
-    phone: '+880 1812-345678',
-    address: 'Gulshan 2 Commercial Area, Dhaka',
-    businessType: 'Supermarket',
-    logoUrl: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=200&auto=format&fit=crop&q=80',
-    currencySymbol: '৳',
-    taxRate: 5.0,
-    status: 'active',
-    createdAt: '2026-02-10T09:00:00Z',
-    description: 'Premier urban supermarket providing daily essentials, fresh dairy, groceries, and consumer goods.',
-  },
-  {
-    id: 'SHOP-002',
-    name: 'Fresh Valley Organic Market',
-    ownerName: 'Sarah Jenkins',
-    ownerId: 'USR-VALLEY',
-    email: 'owner@freshvalley.com',
-    phone: '+880 1712-876543',
-    address: 'Dhanmondi Road 27, Dhaka',
-    businessType: 'Organic Market',
-    logoUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=200&auto=format&fit=crop&q=80',
-    currencySymbol: '৳',
-    taxRate: 4.0,
-    status: 'active',
-    createdAt: '2026-03-01T10:30:00Z',
-    description: 'Certified organic and artisan food market specializing in farm-fresh produce and health foods.',
-  },
-];
-
-const INITIAL_PRODUCTS: Product[] = [
-  // SHOP-001 Products
-  {
-    id: 'PROD-001',
-    businessId: 'SHOP-001',
-    ownerId: 'USR-METRO',
-    name: 'Fresh Whole Milk 1 Gallon',
-    description: 'Fresh pasteurized Grade A whole milk with vitamin D. Sourced daily from local dairy farms.',
-    category: 'Dairy & Eggs',
-    brand: 'Valley Dairy',
-    sku: 'MILK-WHL-1G',
-    barcode: '890103001',
-    purchasePrice: 2.80,
-    sellingPrice: 4.29,
-    openingStock: 50,
-    totalReceived: 80,
-    totalSold: 45,
-    stockAdjustments: 0,
-    currentStock: 85, // 50 + 80 - 45 = 85
-    minStockLevel: 25,
-    maxStockLevel: 150,
-    supplier: 'Golden Valley Dairy Ltd.',
-    batchNumber: 'BCH-2026-M09',
-    expiryDate: '2026-10-15',
-    unit: 'bottle',
-    notes: 'Keep refrigerated between 34°F and 38°F',
-    imageUrl: 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=400&auto=format&fit=crop&q=80',
-    isPublic: true,
-    isPublished: true,
-    status: 'active',
-    createdAt: '2026-08-01T08:00:00Z',
-    updatedAt: '2026-09-10T11:00:00Z',
-  },
-  {
-    id: 'PROD-002',
-    businessId: 'SHOP-001',
-    ownerId: 'USR-METRO',
-    name: 'Basmati Premium Long Grain Rice 5kg',
-    description: 'Aged Himalayan long grain aromatic basmati rice. Fluffy and non-sticky when cooked.',
-    category: 'Pantry & Grains',
-    brand: 'Royal Harvest',
-    sku: 'RICE-BAS-5KG',
-    barcode: '890103002',
-    purchasePrice: 9.50,
-    sellingPrice: 15.99,
-    openingStock: 30,
-    totalReceived: 40,
-    totalSold: 28,
-    stockAdjustments: 0,
-    currentStock: 42, // 30 + 40 - 28 = 42
-    minStockLevel: 15,
-    maxStockLevel: 100,
-    supplier: 'Apex Global Imports',
-    batchNumber: 'BCH-2026-R02',
-    expiryDate: '2027-08-30',
-    unit: 'packet',
-    notes: 'Store in cool and dry airtight container',
-    imageUrl: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400&auto=format&fit=crop&q=80',
-    isPublic: true,
-    isPublished: true,
-    status: 'active',
-    createdAt: '2026-08-01T08:00:00Z',
-    updatedAt: '2026-09-08T14:00:00Z',
-  },
-  {
-    id: 'PROD-003',
-    businessId: 'SHOP-001',
-    ownerId: 'USR-METRO',
-    name: 'Classic Cola Soda Can (Pack of 6)',
-    description: 'Original refreshing carbonated soda cans. Crisp effervescence and balanced sweet cola flavor.',
-    category: 'Beverages',
-    brand: 'Coca-Cola',
-    sku: 'SODA-COLA-6PK',
-    barcode: '890103003',
-    purchasePrice: 3.20,
-    sellingPrice: 5.49,
-    openingStock: 80,
-    totalReceived: 120,
-    totalSold: 192,
-    stockAdjustments: 0,
-    currentStock: 8, // 80 + 120 - 192 = 8 -> LOW STOCK & Restock Recommended!
-    minStockLevel: 20,
-    maxStockLevel: 250,
-    supplier: 'Metro Beverage Distributors',
-    batchNumber: 'BCH-2026-CC1',
-    expiryDate: '2027-02-15',
-    unit: 'pack',
-    notes: 'High velocity seller, auto replenishment needed',
-    imageUrl: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=400&auto=format&fit=crop&q=80',
-    isPublic: true,
-    isPublished: true,
-    status: 'active',
-    createdAt: '2026-08-01T08:00:00Z',
-    updatedAt: '2026-09-12T16:00:00Z',
-  },
-  {
-    id: 'PROD-004',
-    businessId: 'SHOP-001',
-    ownerId: 'USR-METRO',
-    name: 'Artisan Sourdough Loaf 500g',
-    description: 'Naturally fermented rustic sourdough with a crunchy crust and tender open crumb.',
-    category: 'Bakery',
-    brand: 'Baker & Mill',
-    sku: 'BKR-SRD-500G',
-    barcode: '890103004',
-    purchasePrice: 2.10,
-    sellingPrice: 3.99,
-    openingStock: 25,
-    totalReceived: 30,
-    totalSold: 47,
-    stockAdjustments: -1,
-    currentStock: 7, // 25 + 30 - 1 - 47 = 7 -> Low Stock
-    minStockLevel: 10,
-    maxStockLevel: 60,
-    supplier: 'Artisan Bakery Co.',
-    batchNumber: 'BCH-2026-B12',
-    expiryDate: '2026-09-20',
-    unit: 'pcs',
-    notes: 'Fresh bake received every morning at 7:00 AM',
-    imageUrl: 'https://images.unsplash.com/photo-1589367920969-ab8e050bbb04?w=400&auto=format&fit=crop&q=80',
-    isPublic: true,
-    isPublished: true,
-    status: 'active',
-    createdAt: '2026-08-05T09:00:00Z',
-    updatedAt: '2026-09-13T07:00:00Z',
-  },
-  {
-    id: 'PROD-005',
-    businessId: 'SHOP-001',
-    ownerId: 'USR-METRO',
-    name: 'Extra Virgin Olive Oil 750ml',
-    description: 'Cold-pressed extra virgin olive oil from Mediterranean olives. Rich aroma and peppery finish.',
-    category: 'Pantry & Grains',
-    brand: 'Terra Gold',
-    sku: 'OIL-EVOO-750M',
-    barcode: '890103005',
-    purchasePrice: 8.00,
-    sellingPrice: 13.50,
-    openingStock: 40,
-    totalReceived: 20,
-    totalSold: 18,
-    stockAdjustments: 0,
-    currentStock: 42,
-    minStockLevel: 12,
-    maxStockLevel: 80,
-    supplier: 'Apex Global Imports',
-    batchNumber: 'BCH-2026-OL4',
-    expiryDate: '2027-11-30',
-    unit: 'bottle',
-    notes: 'Premium dark glass bottle protection',
-    imageUrl: 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=400&auto=format&fit=crop&q=80',
-    isPublic: false, // Private product example
-    isPublished: false,
-    status: 'active',
-    createdAt: '2026-08-06T10:00:00Z',
-    updatedAt: '2026-09-02T15:00:00Z',
-  },
-  {
-    id: 'PROD-006',
-    businessId: 'SHOP-001',
-    ownerId: 'USR-METRO',
-    name: 'Fresh Organic Bananas (Per Kg)',
-    description: 'Sweet and creamy high-potassium yellow bananas, ethically harvested from sustainable farms.',
-    category: 'Fresh Produce',
-    brand: 'Farm Fresh',
-    sku: 'PRD-BAN-1KG',
-    barcode: '890103006',
-    purchasePrice: 0.90,
-    sellingPrice: 1.79,
-    openingStock: 100,
-    totalReceived: 150,
-    totalSold: 190,
-    stockAdjustments: -2,
-    currentStock: 58,
-    minStockLevel: 30,
-    maxStockLevel: 250,
-    supplier: 'Green Valley Produce',
-    batchNumber: 'BCH-2026-BN3',
-    expiryDate: '2026-09-22',
-    unit: 'kg',
-    notes: 'Daily turnover item',
-    imageUrl: 'https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?w=400&auto=format&fit=crop&q=80',
-    isPublic: true,
-    isPublished: true,
-    status: 'active',
-    createdAt: '2026-08-01T08:00:00Z',
-    updatedAt: '2026-09-12T10:00:00Z',
-  },
-
-  // SHOP-002 Products (Strictly isolated to Fresh Valley Organic Market)
-  {
-    id: 'PROD-201',
-    businessId: 'SHOP-002',
-    ownerId: 'USR-VALLEY',
-    name: 'Organic Honeycomb Pure Honey 500g',
-    description: 'Raw unfiltered clover blossom honey with raw comb section. Rich in natural floral enzymes.',
-    category: 'Pantry & Grains',
-    brand: 'Valley Bee Co.',
-    sku: 'ORG-HNY-500G',
-    barcode: '890203001',
-    purchasePrice: 6.50,
-    sellingPrice: 11.99,
-    openingStock: 20,
-    totalReceived: 35,
-    totalSold: 16,
-    stockAdjustments: 0,
-    currentStock: 39,
-    minStockLevel: 10,
-    maxStockLevel: 60,
-    supplier: 'Highland Apiaries',
-    batchNumber: 'BCH-ORG-H01',
-    expiryDate: '2028-06-30',
-    unit: 'bottle',
-    notes: '100% pure raw unprocessed honey',
-    imageUrl: 'https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=400&auto=format&fit=crop&q=80',
-    isPublic: true,
-    isPublished: true,
-    status: 'active',
-    createdAt: '2026-08-10T10:00:00Z',
-    updatedAt: '2026-09-05T12:00:00Z',
-  },
-  {
-    id: 'PROD-202',
-    businessId: 'SHOP-002',
-    ownerId: 'USR-VALLEY',
-    name: 'Organic Hass Avocados (Pack of 4)',
-    description: 'Ripe and ready-to-eat rich buttery Hass avocados. Certified USDA Organic.',
-    category: 'Fresh Produce',
-    brand: 'Emerald Groves',
-    sku: 'ORG-AVO-4PK',
-    barcode: '890203002',
-    purchasePrice: 3.50,
-    sellingPrice: 5.99,
-    openingStock: 40,
-    totalReceived: 50,
-    totalSold: 84,
-    stockAdjustments: 0,
-    currentStock: 6, // Low stock
-    minStockLevel: 15,
-    maxStockLevel: 100,
-    supplier: 'Pacific Organic Cooperative',
-    batchNumber: 'BCH-ORG-AV2',
-    expiryDate: '2026-09-24',
-    unit: 'pack',
-    notes: 'Customer favorite item',
-    imageUrl: 'https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?w=400&auto=format&fit=crop&q=80',
-    isPublic: true,
-    isPublished: true,
-    status: 'active',
-    createdAt: '2026-08-10T10:00:00Z',
-    updatedAt: '2026-09-12T14:00:00Z',
-  },
-];
-
-const INITIAL_SUPPLIERS: Supplier[] = [
-  {
-    id: 'SUP-001',
-    businessId: 'SHOP-001',
-    name: 'Golden Valley Dairy Ltd.',
-    contactPerson: 'Robert Miller',
-    email: 'orders@goldenvalleydairy.com',
-    phone: '+1 (555) 443-2211',
-    address: '12 Farmstead Way, Dairy Valley',
-    suppliedCategories: ['Dairy & Eggs'],
-    status: 'active',
-    createdAt: '2026-02-15T08:00:00Z',
-  },
-  {
-    id: 'SUP-002',
-    businessId: 'SHOP-001',
-    name: 'Apex Global Imports',
-    contactPerson: 'Elena Rostova',
-    email: 'supply@apeximports.com',
-    phone: '+1 (555) 667-8899',
-    address: '88 Harbour Quay, Logistics Terminal 4',
-    suppliedCategories: ['Pantry & Grains', 'Snacks & Confectionery'],
-    status: 'active',
-    createdAt: '2026-02-18T09:00:00Z',
-  },
-  {
-    id: 'SUP-003',
-    businessId: 'SHOP-001',
-    name: 'Metro Beverage Distributors',
-    contactPerson: 'Mark Davis',
-    email: 'orders@metrobev.com',
-    phone: '+1 (555) 991-0022',
-    address: '45 Bottler Lane, Industrial Park',
-    suppliedCategories: ['Beverages'],
-    status: 'active',
-    createdAt: '2026-02-20T10:00:00Z',
-  },
-  {
-    id: 'SUP-201',
-    businessId: 'SHOP-002',
-    name: 'Pacific Organic Cooperative',
-    contactPerson: 'Clara Vance',
-    email: 'sales@pacificorganic.org',
-    phone: '+1 (555) 332-1144',
-    address: '500 Coastal Way, Valley Farm',
-    suppliedCategories: ['Fresh Produce', 'Pantry & Grains'],
-    status: 'active',
-    createdAt: '2026-03-05T11:00:00Z',
-  },
-];
-
-const INITIAL_MOVEMENTS: InventoryMovement[] = [
-  {
-    id: 'MOV-1001',
-    businessId: 'SHOP-001',
-    productId: 'PROD-001',
-    productName: 'Fresh Whole Milk 1 Gallon',
-    sku: 'MILK-WHL-1G',
-    type: 'OPENING',
-    quantity: 50,
-    previousStock: 0,
-    newStock: 50,
-    referenceId: 'SYS-INIT-001',
-    notes: 'Initial opening stock intake',
-    createdAt: '2026-08-01T08:00:00Z',
-    performedBy: 'David Harris',
-  },
-  {
-    id: 'MOV-1002',
-    businessId: 'SHOP-001',
-    productId: 'PROD-001',
-    productName: 'Fresh Whole Milk 1 Gallon',
-    sku: 'MILK-WHL-1G',
-    type: 'RECEIVING',
-    quantity: 80,
-    previousStock: 50,
-    newStock: 130,
-    referenceId: 'INV-GV-8821',
-    unitCost: 2.80,
-    notes: 'Stock received from Golden Valley Dairy',
-    createdAt: '2026-08-15T10:00:00Z',
-    performedBy: 'David Harris',
-  },
-  {
-    id: 'MOV-1003',
-    businessId: 'SHOP-001',
-    productId: 'PROD-001',
-    productName: 'Fresh Whole Milk 1 Gallon',
-    sku: 'MILK-WHL-1G',
-    type: 'SALE',
-    quantity: 45,
-    previousStock: 130,
-    newStock: 85,
-    referenceId: 'POS-REC-1049',
-    notes: 'Point of sale customer transactions',
-    createdAt: '2026-09-10T18:00:00Z',
-    performedBy: 'David Harris',
-  },
-  {
-    id: 'MOV-1004',
-    businessId: 'SHOP-001',
-    productId: 'PROD-003',
-    productName: 'Classic Cola Soda Can (Pack of 6)',
-    sku: 'SODA-COLA-6PK',
-    type: 'OPENING',
-    quantity: 80,
-    previousStock: 0,
-    newStock: 80,
-    referenceId: 'SYS-INIT-002',
-    notes: 'Initial opening stock intake',
-    createdAt: '2026-08-01T08:00:00Z',
-    performedBy: 'David Harris',
-  },
-  {
-    id: 'MOV-1005',
-    businessId: 'SHOP-001',
-    productId: 'PROD-003',
-    productName: 'Classic Cola Soda Can (Pack of 6)',
-    sku: 'SODA-COLA-6PK',
-    type: 'RECEIVING',
-    quantity: 120,
-    previousStock: 80,
-    newStock: 200,
-    referenceId: 'INV-MBD-441',
-    unitCost: 3.20,
-    notes: 'Stock delivery from Metro Beverage',
-    createdAt: '2026-08-20T11:00:00Z',
-    performedBy: 'David Harris',
-  },
-  {
-    id: 'MOV-1006',
-    businessId: 'SHOP-001',
-    productId: 'PROD-003',
-    productName: 'Classic Cola Soda Can (Pack of 6)',
-    sku: 'SODA-COLA-6PK',
-    type: 'SALE',
-    quantity: 192,
-    previousStock: 200,
-    newStock: 8,
-    referenceId: 'POS-REC-1080',
-    notes: 'High demand weekend beverage sales',
-    createdAt: '2026-09-12T16:00:00Z',
-    performedBy: 'David Harris',
-  },
-];
-
-const INITIAL_SALES: Sale[] = [
-  {
-    id: 'SALE-101',
-    businessId: 'SHOP-001',
-    invoiceNumber: 'INV-2026-001',
-    customerName: 'Alice Walker',
-    customerPhone: '+1 555-4321',
-    items: [
-      {
-        productId: 'PROD-001',
-        productName: 'Fresh Whole Milk 1 Gallon',
-        sku: 'MILK-WHL-1G',
-        barcode: '890103001',
-        unitPrice: 4.29,
-        costPrice: 2.80,
-        quantity: 2,
-        subtotal: 8.58,
-        unit: 'bottle',
-      },
-      {
-        productId: 'PROD-003',
-        productName: 'Classic Cola Soda Can (Pack of 6)',
-        sku: 'SODA-COLA-6PK',
-        barcode: '890103003',
-        unitPrice: 5.49,
-        costPrice: 3.20,
-        quantity: 3,
-        subtotal: 16.47,
-        unit: 'pack',
-      },
-    ],
-    subtotal: 25.05,
-    discount: 0,
-    tax: 1.25,
-    totalAmount: 26.30,
-    paymentMethod: 'cash',
-    paymentStatus: 'paid',
-    receivedAmount: 30.00,
-    changeAmount: 3.70,
-    notes: 'Customer paid with cash $30 bill',
-    createdAt: '2026-09-12T14:30:00Z',
-    cashierName: 'David Harris',
-  },
-  {
-    id: 'SALE-102',
-    businessId: 'SHOP-001',
-    invoiceNumber: 'INV-2026-002',
-    customerName: 'Marcus Sterling',
-    customerPhone: '+1 555-8890',
-    items: [
-      {
-        productId: 'PROD-002',
-        productName: 'Basmati Premium Long Grain Rice 5kg',
-        sku: 'RICE-BAS-5KG',
-        barcode: '890103002',
-        unitPrice: 15.99,
-        costPrice: 9.50,
-        quantity: 1,
-        subtotal: 15.99,
-        unit: 'packet',
-      },
-      {
-        productId: 'PROD-004',
-        productName: 'Artisan Sourdough Loaf 500g',
-        sku: 'BKR-SRD-500G',
-        barcode: '890103004',
-        unitPrice: 3.99,
-        costPrice: 2.10,
-        quantity: 2,
-        subtotal: 7.98,
-        unit: 'pcs',
-      },
-    ],
-    subtotal: 23.97,
-    discount: 1.00,
-    tax: 1.15,
-    totalAmount: 24.12,
-    paymentMethod: 'card',
-    paymentStatus: 'paid',
-    receivedAmount: 24.12,
-    changeAmount: 0.00,
-    notes: 'Chip card payment accepted',
-    createdAt: '2026-09-13T03:15:00Z',
-    cashierName: 'David Harris',
-  },
-];
-
-const INITIAL_AUDIT_LOGS: AuditLog[] = [
-  {
-    id: 'LOG-001',
-    businessId: 'SHOP-001',
-    businessName: 'Metro Supermarket & Mart',
-    userId: 'USR-METRO',
-    userName: 'David Harris',
-    userRole: 'business_owner',
-    action: 'INIT_STORE',
-    details: 'Workspace initialized with 6 core products',
-    timestamp: '2026-08-01T08:00:00Z',
-  },
-  {
-    id: 'LOG-002',
-    businessId: null,
-    userId: 'USR-ADMIN',
-    userName: 'Super Administrator',
-    userRole: 'super_admin',
-    action: 'PLATFORM_CHECK',
-    details: 'Routine multi-tenant system integrity check passed',
-    timestamp: '2026-09-01T00:00:00Z',
-  },
-];
-
-const INITIAL_ORDERS: Order[] = [
-  {
-    id: 'ORD-2026-1001',
-    orderId: 'ORD-2026-1001',
-    customerName: 'Tanvir Rahman',
-    customerPhone: '+880 1711-223344',
-    customerEmail: 'tanvir@gmail.com',
-    deliveryAddress: 'House 14, Road 5, Block C, Banani, Dhaka',
-    customerNote: 'Please ring bell upon arrival.',
-    items: [
-      {
-        productId: 'PROD-001',
-        productNameSnapshot: 'Fresh Whole Milk 1 Gallon',
-        sku: 'MILK-WHL-1G',
-        barcode: '890103001',
-        unitPriceSnapshot: 4.29,
-        costPriceSnapshot: 2.80,
-        quantity: 2,
-        subtotal: 8.58,
-        unit: 'bottle',
-        ownerId: 'USR-METRO',
-        ownerNameSnapshot: 'David Harris',
-        storeId: 'SHOP-001',
-        storeNameSnapshot: 'Metro Supermarket & Mart',
-        imageUrl: 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=400&auto=format&fit=crop&q=80',
-      },
-      {
-        productId: 'PROD-002',
-        productNameSnapshot: 'Basmati Premium Long Grain Rice 5kg',
-        sku: 'RICE-BAS-5KG',
-        barcode: '890103002',
-        unitPriceSnapshot: 15.99,
-        costPriceSnapshot: 9.50,
-        quantity: 1,
-        subtotal: 15.99,
-        unit: 'packet',
-        ownerId: 'USR-METRO',
-        ownerNameSnapshot: 'David Harris',
-        storeId: 'SHOP-001',
-        storeNameSnapshot: 'Metro Supermarket & Mart',
-        imageUrl: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400&auto=format&fit=crop&q=80',
-      }
-    ],
-    productId: 'PROD-001',
-    productNameSnapshot: 'Fresh Whole Milk 1 Gallon (+1 other)',
-    ownerId: 'USR-METRO',
-    ownerNameSnapshot: 'David Harris',
-    storeId: 'SHOP-001',
-    storeNameSnapshot: 'Metro Supermarket & Mart',
-    quantity: 3,
-    unitPriceSnapshot: 4.29,
-    subtotal: 24.57,
-    deliveryCharge: 60,
-    totalAmount: 84.57,
-    orderStatus: 'Processing',
-    paymentStatus: 'cash_on_delivery',
-    paymentMethod: 'cash_on_delivery',
-    statusHistory: [
-      {
-        changedBy: 'Customer / Online Marketplace',
-        changedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-        previousStatus: 'Pending',
-        newStatus: 'Pending',
-        notes: 'Order placed via Public Marketplace',
-      },
-      {
-        changedBy: 'David Harris (Store Owner)',
-        changedAt: new Date(Date.now() - 86400000 * 1).toISOString(),
-        previousStatus: 'Pending',
-        newStatus: 'Processing',
-        notes: 'Order confirmed and packed in warehouse.',
-      }
-    ],
-    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-    updatedAt: new Date(Date.now() - 86400000 * 1).toISOString(),
-  },
-  {
-    id: 'ORD-2026-1002',
-    orderId: 'ORD-2026-1002',
-    customerName: 'Farhana Akter',
-    customerPhone: '+880 1819-998877',
-    customerEmail: 'farhana.akter@outlook.com',
-    deliveryAddress: 'Apartment 4B, Road 11, Dhanmondi, Dhaka',
-    customerNote: 'Leave at front security desk.',
-    items: [
-      {
-        productId: 'PROD-008',
-        productNameSnapshot: 'Fresh Farm Spinach Leaves 500g',
-        sku: 'VEG-SPN-500G',
-        barcode: '890103008',
-        unitPriceSnapshot: 1.99,
-        costPriceSnapshot: 0.95,
-        quantity: 3,
-        subtotal: 5.97,
-        unit: 'pack',
-        ownerId: 'USR-VALLEY',
-        ownerNameSnapshot: 'Sarah Jenkins',
-        storeId: 'SHOP-002',
-        storeNameSnapshot: 'Fresh Valley Organic Market',
-        imageUrl: 'https://images.unsplash.com/photo-1576045057995-568f588f82fb?w=400&auto=format&fit=crop&q=80',
-      }
-    ],
-    productId: 'PROD-008',
-    productNameSnapshot: 'Fresh Farm Spinach Leaves 500g',
-    ownerId: 'USR-VALLEY',
-    ownerNameSnapshot: 'Sarah Jenkins',
-    storeId: 'SHOP-002',
-    storeNameSnapshot: 'Fresh Valley Organic Market',
-    quantity: 3,
-    unitPriceSnapshot: 1.99,
-    subtotal: 5.97,
-    deliveryCharge: 50,
-    totalAmount: 55.97,
-    orderStatus: 'Delivered',
-    paymentStatus: 'paid',
-    paymentMethod: 'mobile_banking',
-    statusHistory: [
-      {
-        changedBy: 'Customer / Online Marketplace',
-        changedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
-        previousStatus: 'Pending',
-        newStatus: 'Pending',
-      },
-      {
-        changedBy: 'Sarah Jenkins (Store Owner)',
-        changedAt: new Date(Date.now() - 86400000 * 1).toISOString(),
-        previousStatus: 'Processing',
-        newStatus: 'Delivered',
-        notes: 'Delivered safely to Dhanmondi customer.',
-      }
-    ],
-    createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
-    updatedAt: new Date(Date.now() - 86400000 * 1).toISOString(),
-  }
-];
+const INITIAL_BUSINESSES: Business[] = [];
+const INITIAL_PRODUCTS: Product[] = [];
+const INITIAL_SUPPLIERS: Supplier[] = [];
+const INITIAL_MOVEMENTS: InventoryMovement[] = [];
+const INITIAL_SALES: Sale[] = [];
+const INITIAL_AUDIT_LOGS: AuditLog[] = [];
+const INITIAL_ORDERS: Order[] = [];
 
 // Helper to safely read and write to LocalStorage
 function getFromStorage<T>(key: string, defaultValue: T): T {
@@ -856,6 +160,9 @@ function safeSetItem(key: string, valueStr: string): boolean {
 
 function setToStorage<T>(key: string, value: T, notify = false): void {
   try {
+    if (key === STORAGE_KEYS.PRODUCTS) {
+      cachedProductsInMemory = Array.isArray(value) ? ([...value] as any) : null;
+    }
     const jsonStr = JSON.stringify(value);
     if (safeSetItem(key, jsonStr)) {
       if (notify && typeof window !== 'undefined') {
@@ -919,6 +226,22 @@ export function notifyStorageUpdate(key?: string): void {
   }
 }
 
+const DEMO_PRODUCT_IDS = new Set([
+  'PROD-001', 'PROD-002', 'PROD-003', 'PROD-004', 'PROD-005', 'PROD-006', 'PROD-007', 'PROD-008',
+  'PROD-101', 'PROD-102', 'PROD-103', 'PROD-104', 'PROD-105',
+  'PROD-201', 'PROD-202'
+]);
+
+const isDemoProduct = (p: { id?: string; ownerId?: string }): boolean =>
+  DEMO_PRODUCT_IDS.has(p.id || '') || p.ownerId === 'USR-METRO' || p.ownerId === 'USR-VALLEY';
+
+const isDemoUser = (u: { id?: string; email?: string }): boolean =>
+  u.id === 'USR-METRO' || u.id === 'USR-VALLEY' || u.email === 'owner@metro.com' || u.email === 'owner@freshvalley.com';
+
+const isDemoBusiness = (b: { id?: string; ownerId?: string; name?: string }): boolean =>
+  b.ownerId === 'USR-METRO' || b.ownerId === 'USR-VALLEY' ||
+  b.name === 'Metro Supermarket & Mart' || b.name === 'Fresh Valley Organic Market';
+
 let isFirestoreSyncActive = false;
 
 export async function syncWithFirestore(): Promise<void> {
@@ -937,29 +260,22 @@ export async function syncWithFirestore(): Promise<void> {
     // 1. Initial Products & Tenant Hydration from Firestore
     try {
       const prodSnap = await getDocs(collection(firestoreDb, 'products'));
-      if (prodSnap.empty) {
-        console.log('[Firestore] Cloud database empty. Bootstrapping initial catalog...');
-        for (const p of INITIAL_PRODUCTS) {
-          await setDoc(doc(firestoreDb, 'products', p.id), p);
-        }
-        for (const b of INITIAL_BUSINESSES) {
-          await setDoc(doc(firestoreDb, 'businesses', b.id), b);
-        }
-        for (const u of INITIAL_USERS) {
-          await setDoc(doc(firestoreDb, 'users', u.id), u);
-        }
-        for (const o of INITIAL_ORDERS) {
-          await setDoc(doc(firestoreDb, 'orders', o.id), o);
-        }
-      } else {
+      if (!prodSnap.empty) {
         const cloudProducts: Product[] = [];
         prodSnap.forEach((docSnap) => {
-          cloudProducts.push(docSnap.data() as Product);
+          const p = docSnap.data() as Product;
+          if (!isDemoProduct(p)) {
+            cloudProducts.push(p);
+          }
         });
-        if (cloudProducts.length > 0) {
-          setToStorage(STORAGE_KEYS.PRODUCTS, cloudProducts, false);
-          console.log(`[Firestore] Hydrated ${cloudProducts.length} live products from Cloud Firestore.`);
-        }
+        const existingProds = getFromStorage<Product[]>(STORAGE_KEYS.PRODUCTS, []);
+        const prodMap = new Map<string, Product>();
+        existingProds.forEach((p) => prodMap.set(p.id, p));
+        cloudProducts.forEach((p) => prodMap.set(p.id, p));
+        const mergedProds = Array.from(prodMap.values());
+        cachedProductsInMemory = mergedProds;
+        setToStorage(STORAGE_KEYS.PRODUCTS, mergedProds, false);
+        console.log(`[Firestore] Hydrated and merged ${cloudProducts.length} live products from Cloud Firestore.`);
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, 'products');
@@ -970,8 +286,17 @@ export async function syncWithFirestore(): Promise<void> {
       const bizSnap = await getDocs(collection(firestoreDb, 'businesses'));
       if (!bizSnap.empty) {
         const cloudBiz: Business[] = [];
-        bizSnap.forEach((docSnap) => cloudBiz.push(docSnap.data() as Business));
-        setToStorage(STORAGE_KEYS.BUSINESSES, cloudBiz, false);
+        bizSnap.forEach((docSnap) => {
+          const b = docSnap.data() as Business;
+          if (!isDemoBusiness(b)) {
+            cloudBiz.push(b);
+          }
+        });
+        const existingBiz = getFromStorage<Business[]>(STORAGE_KEYS.BUSINESSES, []);
+        const bizMap = new Map<string, Business>();
+        existingBiz.forEach((b) => bizMap.set(b.id, b));
+        cloudBiz.forEach((b) => bizMap.set(b.id, b));
+        setToStorage(STORAGE_KEYS.BUSINESSES, Array.from(bizMap.values()), false);
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, 'businesses');
@@ -982,8 +307,17 @@ export async function syncWithFirestore(): Promise<void> {
       const ordSnap = await getDocs(collection(firestoreDb, 'orders'));
       if (!ordSnap.empty) {
         const cloudOrders: Order[] = [];
-        ordSnap.forEach((docSnap) => cloudOrders.push(docSnap.data() as Order));
-        setToStorage(STORAGE_KEYS.ORDERS, cloudOrders, false);
+        ordSnap.forEach((docSnap) => {
+          const o = docSnap.data() as Order;
+          if (o.businessId !== 'SHOP-001' && o.customerEmail !== 'tanvir@gmail.com' && o.customerEmail !== 'sumaiya@yahoo.com') {
+            cloudOrders.push(o);
+          }
+        });
+        const existingOrders = getFromStorage<Order[]>(STORAGE_KEYS.ORDERS, []);
+        const ordMap = new Map<string, Order>();
+        existingOrders.forEach((o) => ordMap.set(o.id || o.orderId, o));
+        cloudOrders.forEach((o) => ordMap.set(o.id || o.orderId, o));
+        setToStorage(STORAGE_KEYS.ORDERS, Array.from(ordMap.values()), false);
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, 'orders');
@@ -994,8 +328,17 @@ export async function syncWithFirestore(): Promise<void> {
       const usrSnap = await getDocs(collection(firestoreDb, 'users'));
       if (!usrSnap.empty) {
         const cloudUsers: User[] = [];
-        usrSnap.forEach((docSnap) => cloudUsers.push(docSnap.data() as User));
-        setToStorage(STORAGE_KEYS.USERS, cloudUsers, false);
+        usrSnap.forEach((docSnap) => {
+          const u = docSnap.data() as User;
+          if (!isDemoUser(u)) {
+            cloudUsers.push(u);
+          }
+        });
+        const existingUsers = getFromStorage<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+        const usrMap = new Map<string, User>();
+        existingUsers.forEach((u) => usrMap.set(u.id, u));
+        cloudUsers.forEach((u) => usrMap.set(u.id, u));
+        setToStorage(STORAGE_KEYS.USERS, Array.from(usrMap.values()), false);
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, 'users');
@@ -1006,21 +349,62 @@ export async function syncWithFirestore(): Promise<void> {
       const movSnap = await getDocs(collection(firestoreDb, 'movements'));
       if (!movSnap.empty) {
         const cloudMovs: InventoryMovement[] = [];
-        movSnap.forEach((docSnap) => cloudMovs.push(docSnap.data() as InventoryMovement));
-        setToStorage(STORAGE_KEYS.MOVEMENTS, cloudMovs, false);
+        movSnap.forEach((docSnap) => {
+          const m = docSnap.data() as InventoryMovement;
+          if (!DEMO_PRODUCT_IDS.has(m.productId) && m.performedBy !== 'USR-METRO' && m.performedBy !== 'USR-VALLEY') {
+            cloudMovs.push(m);
+          }
+        });
+        const existingMovs = getFromStorage<InventoryMovement[]>(STORAGE_KEYS.MOVEMENTS, []);
+        const movMap = new Map<string, InventoryMovement>();
+        existingMovs.forEach((m) => movMap.set(m.id, m));
+        cloudMovs.forEach((m) => movMap.set(m.id, m));
+        setToStorage(STORAGE_KEYS.MOVEMENTS, Array.from(movMap.values()), false);
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, 'movements');
     }
 
-    // 6. Real-time Listeners for instant multi-device / multi-environment sync
+    // 6. Hydrate Sales from Firestore
+    try {
+      const saleSnap = await getDocs(collection(firestoreDb, 'sales'));
+      if (!saleSnap.empty) {
+        const cloudSales: Sale[] = [];
+        saleSnap.forEach((docSnap) => {
+          const s = docSnap.data() as Sale;
+          if (s.cashierId !== 'USR-METRO' && s.cashierId !== 'USR-VALLEY') {
+            cloudSales.push(s);
+          }
+        });
+        const existingSales = getFromStorage<Sale[]>(STORAGE_KEYS.SALES, []);
+        const saleMap = new Map<string, Sale>();
+        existingSales.forEach((s) => saleMap.set(s.id, s));
+        cloudSales.forEach((s) => saleMap.set(s.id, s));
+        setToStorage(STORAGE_KEYS.SALES, Array.from(saleMap.values()), false);
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, 'sales');
+    }
+
+    // 7. Real-time Listeners for instant multi-device / multi-environment sync
     onSnapshot(
       collection(firestoreDb, 'products'),
       (snapshot) => {
         if (!snapshot.empty) {
           const liveProducts: Product[] = [];
-          snapshot.forEach((docSnap) => liveProducts.push(docSnap.data() as Product));
-          setToStorage(STORAGE_KEYS.PRODUCTS, liveProducts, false);
+          snapshot.forEach((docSnap) => {
+            const p = docSnap.data() as Product;
+            if (!isDemoProduct(p)) {
+              liveProducts.push(p);
+            }
+          });
+          const existingProds = getFromStorage<Product[]>(STORAGE_KEYS.PRODUCTS, []);
+          const prodMap = new Map<string, Product>();
+          existingProds.forEach((p) => prodMap.set(p.id, p));
+          liveProducts.forEach((p) => prodMap.set(p.id, p));
+          const merged = Array.from(prodMap.values());
+          cachedProductsInMemory = merged;
+          setToStorage(STORAGE_KEYS.PRODUCTS, merged, true);
         }
       },
       (err) => handleFirestoreError(err, OperationType.GET, 'products')
@@ -1031,8 +415,17 @@ export async function syncWithFirestore(): Promise<void> {
       (snapshot) => {
         if (!snapshot.empty) {
           const liveBusinesses: Business[] = [];
-          snapshot.forEach((docSnap) => liveBusinesses.push(docSnap.data() as Business));
-          setToStorage(STORAGE_KEYS.BUSINESSES, liveBusinesses, false);
+          snapshot.forEach((docSnap) => {
+            const b = docSnap.data() as Business;
+            if (!isDemoBusiness(b)) {
+              liveBusinesses.push(b);
+            }
+          });
+          const existingBiz = getFromStorage<Business[]>(STORAGE_KEYS.BUSINESSES, []);
+          const bizMap = new Map<string, Business>();
+          existingBiz.forEach((b) => bizMap.set(b.id, b));
+          liveBusinesses.forEach((b) => bizMap.set(b.id, b));
+          setToStorage(STORAGE_KEYS.BUSINESSES, Array.from(bizMap.values()), true);
         }
       },
       (err) => handleFirestoreError(err, OperationType.GET, 'businesses')
@@ -1043,8 +436,17 @@ export async function syncWithFirestore(): Promise<void> {
       (snapshot) => {
         if (!snapshot.empty) {
           const liveOrders: Order[] = [];
-          snapshot.forEach((docSnap) => liveOrders.push(docSnap.data() as Order));
-          setToStorage(STORAGE_KEYS.ORDERS, liveOrders, false);
+          snapshot.forEach((docSnap) => {
+            const o = docSnap.data() as Order;
+            if (o.businessId !== 'SHOP-001' && o.customerEmail !== 'tanvir@gmail.com' && o.customerEmail !== 'sumaiya@yahoo.com') {
+              liveOrders.push(o);
+            }
+          });
+          const existingOrders = getFromStorage<Order[]>(STORAGE_KEYS.ORDERS, []);
+          const ordMap = new Map<string, Order>();
+          existingOrders.forEach((o) => ordMap.set(o.id || o.orderId, o));
+          liveOrders.forEach((o) => ordMap.set(o.id || o.orderId, o));
+          setToStorage(STORAGE_KEYS.ORDERS, Array.from(ordMap.values()), true);
         }
       },
       (err) => handleFirestoreError(err, OperationType.GET, 'orders')
@@ -1055,8 +457,17 @@ export async function syncWithFirestore(): Promise<void> {
       (snapshot) => {
         if (!snapshot.empty) {
           const liveUsers: User[] = [];
-          snapshot.forEach((docSnap) => liveUsers.push(docSnap.data() as User));
-          setToStorage(STORAGE_KEYS.USERS, liveUsers, false);
+          snapshot.forEach((docSnap) => {
+            const u = docSnap.data() as User;
+            if (!isDemoUser(u)) {
+              liveUsers.push(u);
+            }
+          });
+          const existingUsers = getFromStorage<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+          const usrMap = new Map<string, User>();
+          existingUsers.forEach((u) => usrMap.set(u.id, u));
+          liveUsers.forEach((u) => usrMap.set(u.id, u));
+          setToStorage(STORAGE_KEYS.USERS, Array.from(usrMap.values()), true);
         }
       },
       (err) => handleFirestoreError(err, OperationType.GET, 'users')
@@ -1066,10 +477,40 @@ export async function syncWithFirestore(): Promise<void> {
       collection(firestoreDb, 'movements'),
       (snapshot) => {
         const liveMovements: InventoryMovement[] = [];
-        snapshot.forEach((docSnap) => liveMovements.push(docSnap.data() as InventoryMovement));
-        setToStorage(STORAGE_KEYS.MOVEMENTS, liveMovements, true);
+        snapshot.forEach((docSnap) => {
+          const m = docSnap.data() as InventoryMovement;
+          if (!DEMO_PRODUCT_IDS.has(m.productId) && m.performedBy !== 'USR-METRO' && m.performedBy !== 'USR-VALLEY') {
+            liveMovements.push(m);
+          }
+        });
+        const existingMovs = getFromStorage<InventoryMovement[]>(STORAGE_KEYS.MOVEMENTS, []);
+        const movMap = new Map<string, InventoryMovement>();
+        existingMovs.forEach((m) => movMap.set(m.id, m));
+        liveMovements.forEach((m) => movMap.set(m.id, m));
+        setToStorage(STORAGE_KEYS.MOVEMENTS, Array.from(movMap.values()), true);
       },
       (err) => handleFirestoreError(err, OperationType.GET, 'movements')
+    );
+
+    onSnapshot(
+      collection(firestoreDb, 'sales'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const liveSales: Sale[] = [];
+          snapshot.forEach((docSnap) => {
+            const s = docSnap.data() as Sale;
+            if (s.cashierId !== 'USR-METRO' && s.cashierId !== 'USR-VALLEY') {
+              liveSales.push(s);
+            }
+          });
+          const existingSales = getFromStorage<Sale[]>(STORAGE_KEYS.SALES, []);
+          const saleMap = new Map<string, Sale>();
+          existingSales.forEach((s) => saleMap.set(s.id, s));
+          liveSales.forEach((s) => saleMap.set(s.id, s));
+          setToStorage(STORAGE_KEYS.SALES, Array.from(saleMap.values()), true);
+        }
+      },
+      (err) => handleFirestoreError(err, OperationType.GET, 'sales')
     );
   } catch (globalErr) {
     console.warn('[Firestore] Sync notice:', globalErr);
@@ -1078,6 +519,40 @@ export async function syncWithFirestore(): Promise<void> {
 
 // Ensure database initialization
 export function initializeStorage(): void {
+  // Purge lingering demo items from cached local storage
+  try {
+    const storedProds: Product[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.PRODUCTS) || '[]');
+    const cleanedProds = storedProds.filter((p) => !isDemoProduct(p));
+    if (cleanedProds.length !== storedProds.length) {
+      setToStorage(STORAGE_KEYS.PRODUCTS, cleanedProds);
+    }
+
+    const storedMovs: InventoryMovement[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.MOVEMENTS) || '[]');
+    const cleanedMovs = storedMovs.filter((m) => !DEMO_PRODUCT_IDS.has(m.productId) && m.performedBy !== 'USR-METRO' && m.performedBy !== 'USR-VALLEY');
+    if (cleanedMovs.length !== storedMovs.length) {
+      setToStorage(STORAGE_KEYS.MOVEMENTS, cleanedMovs);
+    }
+
+    const storedSales: Sale[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.SALES) || '[]');
+    const cleanedSales = storedSales.filter((s) => s.cashierId !== 'USR-METRO' && s.cashierId !== 'USR-VALLEY');
+    if (cleanedSales.length !== storedSales.length) {
+      setToStorage(STORAGE_KEYS.SALES, cleanedSales);
+    }
+
+    const storedUsers: User[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]');
+    const cleanedUsers = storedUsers.filter((u) => !isDemoUser(u));
+    if (cleanedUsers.length !== storedUsers.length) {
+      setToStorage(STORAGE_KEYS.USERS, cleanedUsers);
+    }
+
+    const storedBiz: Business[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.BUSINESSES) || '[]');
+    const cleanedBiz = storedBiz.filter((b) => !isDemoBusiness(b));
+    if (cleanedBiz.length !== storedBiz.length) {
+      setToStorage(STORAGE_KEYS.BUSINESSES, cleanedBiz);
+    }
+  } catch (cleanErr) {
+    console.warn('Storage initial cleanup:', cleanErr);
+  }
   if (!localStorage.getItem(STORAGE_KEYS.USERS)) {
     setToStorage(STORAGE_KEYS.USERS, INITIAL_USERS);
   } else {
@@ -1290,8 +765,18 @@ export const db = {
     const businesses = this.getBusinesses();
     const users = this.getUsers();
 
-    const newShopIndex = businesses.length + 1;
-    const businessId = `SHOP-${String(newShopIndex).padStart(3, '0')}`;
+    let candidateIndex = 101;
+    businesses.forEach((b) => {
+      const match = b.id?.match(/^SHOP-(\d+)$/i);
+      if (match) {
+        const val = parseInt(match[1], 10);
+        if (!isNaN(val) && val >= candidateIndex) candidateIndex = val + 1;
+      }
+    });
+    while (businesses.some((b) => b.id === `SHOP-${String(candidateIndex).padStart(3, '0')}`)) {
+      candidateIndex++;
+    }
+    const businessId = `SHOP-${String(candidateIndex).padStart(3, '0')}`;
     const userId = `USR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     const finalBusinessName = data.businessName || data.name || 'My Supermarket';
 
@@ -2097,6 +1582,11 @@ export const db = {
     allSales.unshift(newSale);
     setToStorage(STORAGE_KEYS.SALES, allSales);
 
+    // Persist sale to Cloud Firestore
+    setDoc(doc(firestoreDb, 'sales', newSale.id), sanitizeForFirestore(newSale)).catch((err) =>
+      handleFirestoreError(err, OperationType.CREATE, `sales/${newSale.id}`)
+    );
+
     this.logAudit({
       businessId,
       userId: user.id,
@@ -2459,6 +1949,39 @@ export const db = {
       );
     });
     return matched || null;
+  },
+
+  async trackOrderOnline(orderId: string, phone: string): Promise<Order | null> {
+    const local = this.trackOrder(orderId, phone);
+    if (local) return local;
+
+    try {
+      const cleanId = orderId.trim().toUpperCase();
+      const cleanPhone = phone.replace(/[^0-9]/g, '');
+      const ordSnap = await getDocs(collection(firestoreDb, 'orders'));
+      for (const d of ordSnap.docs) {
+        const o = d.data() as Order;
+        const matchId = (o.id && o.id.toUpperCase() === cleanId) || (o.orderId && o.orderId.toUpperCase() === cleanId);
+        if (matchId) {
+          const orderPhoneClean = (o.customerPhone || '').replace(/[^0-9]/g, '');
+          if (
+            orderPhoneClean === cleanPhone ||
+            (cleanPhone.length >= 7 && orderPhoneClean.endsWith(cleanPhone.slice(-7))) ||
+            (orderPhoneClean.length >= 7 && cleanPhone.endsWith(orderPhoneClean.slice(-7)))
+          ) {
+            const allOrders = this.getOrders();
+            if (!allOrders.some((item) => (item.id || item.orderId) === (o.id || o.orderId))) {
+              allOrders.unshift(o);
+              setToStorage(STORAGE_KEYS.ORDERS, allOrders, false);
+            }
+            return o;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[Storage] trackOrderOnline error:', err);
+    }
+    return null;
   },
 
   async createOrder(payload: {

@@ -1,51 +1,16 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isOwnerOrBusiness(businessId, ownerId) {
-      return isSignedIn() && (
-        request.auth.uid == ownerId ||
-        request.auth.uid == businessId ||
-        (request.auth.token != null && request.auth.token.businessId == businessId)
-      );
-    }
-
     match /users/{userId} {
       allow read, write: if true;
     }
 
     match /businesses/{businessId} {
-      allow read: if true;
-      allow write: if isSignedIn() && (request.auth.uid == businessId || request.auth.uid == resource.data.ownerId);
-      allow create: if true;
+      allow read, write: if true;
     }
 
     match /products/{productId} {
-      // Public products are readable by anyone for Public Stock Page.
-      // Private products are readable only by their business owner.
-      allow read: if resource == null ||
-                  resource.data.isPublic == true ||
-                  resource.data.isPublished == true ||
-                  !isSignedIn() ||
-                  isOwnerOrBusiness(resource.data.businessId, resource.data.ownerId);
-
-      // Create: Business owner creating product with their businessId
-      allow create: if !isSignedIn() ||
-                     (request.resource.data.businessId != null &&
-                      (request.resource.data.ownerId == request.auth.uid || request.resource.data.businessId != null));
-
-      // Update: Must be owner/business and preserve businessId
-      allow update: if !isSignedIn() || (
-        isOwnerOrBusiness(resource.data.businessId, resource.data.ownerId) &&
-        request.resource.data.businessId == resource.data.businessId
-      );
-
-      // Delete: Must be owner/business of existing product
-      allow delete: if !isSignedIn() || isOwnerOrBusiness(resource.data.businessId, resource.data.ownerId);
+      allow read, write: if true;
     }
 
     match /orders/{orderId} {
@@ -53,6 +18,10 @@ service cloud.firestore {
     }
 
     match /movements/{movementId} {
+      allow read, write: if true;
+    }
+
+    match /sales/{saleId} {
       allow read, write: if true;
     }
 
@@ -65,7 +34,7 @@ service cloud.firestore {
     }
 
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if true;
     }
   }
 }

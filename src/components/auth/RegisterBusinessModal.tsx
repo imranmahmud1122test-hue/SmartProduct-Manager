@@ -166,30 +166,30 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200 my-8 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl sm:rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200 my-auto sm:my-8 animate-in fade-in zoom-in-95 duration-150 max-h-[95vh] sm:max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="p-6 bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-900 text-white relative shrink-0">
+        <div className="p-4 sm:p-6 bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-900 text-white relative shrink-0">
           <button
             onClick={onClose}
-            className="absolute top-5 right-5 text-emerald-200 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10"
+            className="absolute top-4 sm:top-5 right-4 sm:right-5 text-emerald-200 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
             aria-label="Close modal"
           >
             <X className="w-5 h-5" />
           </button>
 
           <div className="mb-3">
-            <Logo size="md" light showTagline />
+            <Logo size="md" light showTagline compactOnMobile />
           </div>
 
-          <h2 className="text-2xl font-black tracking-tight">Register New Supermarket Workspace</h2>
+          <h2 className="text-xl sm:text-2xl font-black tracking-tight">Register New Supermarket Workspace</h2>
           <p className="text-xs text-emerald-200/90 mt-1">
             Create an independent, tenant-isolated inventory, barcode generator, and POS cash register portal.
           </p>
         </div>
 
         {/* Scrollable Form */}
-        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 flex-1">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 overflow-y-auto space-y-3.5 sm:space-y-4 flex-1">
           {error && (
             <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs font-medium text-rose-700 flex items-start gap-2.5 animate-in fade-in duration-200">
               <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />

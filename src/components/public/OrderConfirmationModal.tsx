@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { Order } from '../../types';
 import { formatCurrency } from '../../utils/codeGenerators';
+import { printOrderReceipt } from '../../utils/printHelper';
+import { db } from '../../services/storage';
 
 interface OrderConfirmationModalProps {
   order: Order | null;
@@ -41,7 +43,8 @@ export const OrderConfirmationModal: React.FC<OrderConfirmationModalProps> = ({
   };
 
   const handlePrintReceipt = () => {
-    window.print();
+    const business = order.storeId ? db.getBusinessById(order.storeId) : db.getBusinesses()[0];
+    printOrderReceipt(order, business || null);
   };
 
   return (

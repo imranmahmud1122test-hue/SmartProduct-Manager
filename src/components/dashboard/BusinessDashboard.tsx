@@ -161,8 +161,8 @@ export const BusinessDashboard: React.FC<BusinessDashboardProps> = ({
     return diffDays >= 0 && diffDays <= 45;
   });
 
-  // Best selling products
-  const bestSellers = [...activeProducts].sort((a, b) => b.totalSold - a.totalSold).slice(0, 4);
+  // Best selling products (only products that actually have recorded sales)
+  const bestSellers = [...activeProducts].filter((p) => p.totalSold > 0).sort((a, b) => b.totalSold - a.totalSold).slice(0, 4);
 
   // New products added in the last 14 days
   const newProducts = activeProducts.filter((p) => {
@@ -372,7 +372,13 @@ export const BusinessDashboard: React.FC<BusinessDashboardProps> = ({
           </div>
 
           <div className="space-y-3">
-            {[...outOfStockProducts, ...lowStockProducts].slice(0, 4).length === 0 ? (
+            {totalProducts === 0 ? (
+              <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-2xl">
+                <Package className="w-8 h-8 mx-auto text-slate-300 mb-1" />
+                <span className="text-xs font-bold text-slate-700">No products in inventory yet</span>
+                <p className="text-[11px] text-slate-400 mt-0.5">Add or bulk-import products to receive stock run-rate recommendations.</p>
+              </div>
+            ) : [...outOfStockProducts, ...lowStockProducts].slice(0, 4).length === 0 ? (
               <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-2xl">
                 <CheckCircle2 className="w-8 h-8 mx-auto text-emerald-500 mb-1" />
                 <span className="text-xs font-bold text-slate-700">All product stock levels are healthy</span>
@@ -413,7 +419,7 @@ export const BusinessDashboard: React.FC<BusinessDashboardProps> = ({
                       </span>
                       <button
                         onClick={() => onOpenReceiveStock(item)}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors flex items-center gap-1"
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
                       >
                         + Restock
                       </button>
@@ -434,38 +440,45 @@ export const BusinessDashboard: React.FC<BusinessDashboardProps> = ({
             </div>
             <button
               onClick={() => onNavigate('reports')}
-              className="text-xs font-semibold text-emerald-600 hover:text-emerald-700"
+              className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 cursor-pointer"
             >
               Full Report →
             </button>
           </div>
 
           <div className="space-y-3">
-            {bestSellers.map((item, idx) => (
-              <div
-                key={item.id}
-                className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between text-xs"
-              >
-                <div className="flex items-center gap-2.5">
-                  <span className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-[11px]">
-                    #{idx + 1}
-                  </span>
-                  <div>
-                    <h5 className="font-bold text-slate-900 line-clamp-1">{item.name}</h5>
-                    <span className="text-slate-400 text-[11px]">{item.category}</span>
+            {bestSellers.length === 0 ? (
+              <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-2xl">
+                <p className="text-xs font-bold text-slate-600">No product sales recorded yet</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Top performing products by sales volume will appear here once checkout transactions occur.</p>
+              </div>
+            ) : (
+              bestSellers.map((item, idx) => (
+                <div
+                  key={item.id}
+                  className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between text-xs"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-[11px]">
+                      #{idx + 1}
+                    </span>
+                    <div>
+                      <h5 className="font-bold text-slate-900 line-clamp-1">{item.name}</h5>
+                      <span className="text-slate-400 text-[11px]">{item.category}</span>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <span className="font-extrabold text-emerald-700 block">
+                      {item.totalSold} {item.unit} sold
+                    </span>
+                    <span className="text-slate-400 text-[11px]">
+                      {formatCurrency(item.totalSold * item.sellingPrice, currency)}
+                    </span>
                   </div>
                 </div>
-
-                <div className="text-right">
-                  <span className="font-extrabold text-emerald-700 block">
-                    {item.totalSold} {item.unit} sold
-                  </span>
-                  <span className="text-slate-400 text-[11px]">
-                    {formatCurrency(item.totalSold * item.sellingPrice, currency)}
-                  </span>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -479,53 +492,61 @@ export const BusinessDashboard: React.FC<BusinessDashboardProps> = ({
           </div>
           <button
             onClick={() => onNavigate('reports')}
-            className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
+            className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 cursor-pointer"
           >
             View All Ledger Movements <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {recentMovements.map((mov) => (
-            <div
-              key={mov.id}
-              className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-2 relative group hover:border-slate-300 transition-all"
-            >
-              <div className="flex items-center justify-between">
-                <span
-                  className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
-                    mov.type === 'RECEIVING'
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : mov.type === 'SALE'
-                      ? 'bg-rose-100 text-rose-800'
-                      : 'bg-blue-100 text-blue-800'
-                  }`}
-                >
-                  {mov.type === 'RECEIVING' ? '+ INWARD LOAD' : mov.type === 'SALE' ? '- POS SALE' : mov.type}
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-slate-400">{formatDate(mov.createdAt)}</span>
-                  <button
-                    onClick={() => handleDeleteMovement(mov.id, mov.productName)}
-                    title="Delete Stock Movement Record"
-                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+        {recentMovements.length === 0 ? (
+          <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+            <History className="w-8 h-8 mx-auto text-slate-300 mb-1" />
+            <p className="text-xs font-bold text-slate-700">No recent inventory movements recorded</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Incoming supplier loads and checkout sales will appear in this ledger feed.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {recentMovements.map((mov) => (
+              <div
+                key={mov.id}
+                className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-2 relative group hover:border-slate-300 transition-all"
+              >
+                <div className="flex items-center justify-between">
+                  <span
+                    className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                      mov.type === 'RECEIVING'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : mov.type === 'SALE'
+                        ? 'bg-rose-100 text-rose-800'
+                        : 'bg-blue-100 text-blue-800'
+                    }`}
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                    {mov.type === 'RECEIVING' ? '+ INWARD LOAD' : mov.type === 'SALE' ? '- POS SALE' : mov.type}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-slate-400">{formatDate(mov.createdAt)}</span>
+                    <button
+                      onClick={() => handleDeleteMovement(mov.id, mov.productName)}
+                      title="Delete Stock Movement Record"
+                      className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <h4 className="font-bold text-slate-900 line-clamp-1">{mov.productName}</h4>
+
+                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-200/60">
+                  <span>Ref: {mov.referenceId || 'N/A'}</span>
+                  <span>
+                    Prev: <strong>{mov.previousStock}</strong> → New: <strong className="text-emerald-700">{mov.newStock}</strong>
+                  </span>
                 </div>
               </div>
-
-              <h4 className="font-bold text-slate-900 line-clamp-1">{mov.productName}</h4>
-
-              <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-200/60">
-                <span>Ref: {mov.referenceId || 'N/A'}</span>
-                <span>
-                  Prev: <strong>{mov.previousStock}</strong> → New: <strong className="text-emerald-700">{mov.newStock}</strong>
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

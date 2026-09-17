@@ -150,23 +150,23 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 my-6">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl sm:rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 my-auto sm:my-6 max-h-[92vh] flex flex-col">
         {/* Top Brand Banner */}
-        <div className="p-6 text-white relative bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950">
+        <div className="p-4 sm:p-6 text-white relative bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 shrink-0">
           <button
             onClick={onClose}
-            className="absolute top-5 right-5 text-slate-400 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10"
+            className="absolute top-4 sm:top-5 right-4 sm:right-5 text-slate-400 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
             aria-label="Close modal"
           >
             <X className="w-5 h-5" />
           </button>
 
-          <div className="mb-4">
-            <Logo size="md" light showTagline />
+          <div className="mb-3 sm:mb-4">
+            <Logo size="md" light showTagline compactOnMobile />
           </div>
 
-          <h2 className="text-xl font-black tracking-tight">
+          <h2 className="text-lg sm:text-xl font-black tracking-tight">
             Store Workspace Sign In
           </h2>
           <p className="text-xs text-slate-300 mt-1">
@@ -175,7 +175,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleLogin} className="p-6 space-y-4">
+        <form onSubmit={handleLogin} className="p-4 sm:p-6 space-y-3.5 sm:space-y-4 overflow-y-auto flex-1">
           {error && (
             <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs font-medium text-rose-700 flex items-start gap-2.5 animate-in fade-in duration-200">
               <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />

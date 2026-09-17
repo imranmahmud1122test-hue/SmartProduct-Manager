@@ -93,13 +93,19 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
   const [isLoadingPublicProducts, setIsLoadingPublicProducts] = useState(false);
 
   const loadData = async (targetBusinessId?: string) => {
-    // 1. Synchronous initial render from local cache, filtering out pre-populated demo shops SHOP-001 & SHOP-002
-    const activeBiz = db.getBusinesses().filter((b) => b.status === 'active' && b.id !== 'SHOP-001' && b.id !== 'SHOP-002');
+    // 1. Synchronous initial render from local cache, filtering out deprecated demo shop names
+    const isDemoStore = (b: { name?: string; ownerId?: string }) =>
+      b.name === 'Metro Supermarket & Mart' ||
+      b.name === 'Fresh Valley Organic Market' ||
+      b.ownerId === 'USR-METRO' ||
+      b.ownerId === 'USR-VALLEY';
+
+    const activeBiz = db.getBusinesses().filter((b) => b.status === 'active' && !isDemoStore(b));
     setBusinesses(activeBiz);
 
     const bizFilter = targetBusinessId !== undefined ? targetBusinessId : selectedBusinessFilter;
     const initialPublic = db.getPublicProducts(bizFilter !== 'ALL' ? bizFilter : undefined)
-      .filter((p) => p.businessId !== 'SHOP-001' && p.businessId !== 'SHOP-002');
+      .filter((p) => p.ownerId !== 'USR-METRO' && p.ownerId !== 'USR-VALLEY');
     setPublicProducts(initialPublic);
 
     // 2. Direct Firestore query from the same 'products' collection using businessId parameter
@@ -107,7 +113,7 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
       setIsLoadingPublicProducts(true);
       const livePublic = await db.fetchPublicProductsFromFirestore(bizFilter !== 'ALL' ? bizFilter : undefined);
       if (livePublic && livePublic.length > 0) {
-        const filteredLive = livePublic.filter((p) => p.businessId !== 'SHOP-001' && p.businessId !== 'SHOP-002');
+        const filteredLive = livePublic.filter((p) => p.ownerId !== 'USR-METRO' && p.ownerId !== 'USR-VALLEY');
         setPublicProducts(filteredLive);
       }
     } catch (err: any) {
@@ -133,11 +139,17 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
   }, [selectedBusinessFilter]);
 
   useEffect(() => {
+    const isDemoStore = (b: { name?: string; ownerId?: string }) =>
+      b.name === 'Metro Supermarket & Mart' ||
+      b.name === 'Fresh Valley Organic Market' ||
+      b.ownerId === 'USR-METRO' ||
+      b.ownerId === 'USR-VALLEY';
+
     const handleUpdate = () => {
-      // Refresh local cache representation, filtering out pre-populated demo shops SHOP-001 & SHOP-002
-      setBusinesses(db.getBusinesses().filter((b) => b.status === 'active' && b.id !== 'SHOP-001' && b.id !== 'SHOP-002'));
+      // Refresh local cache representation, filtering out demo shops
+      setBusinesses(db.getBusinesses().filter((b) => b.status === 'active' && !isDemoStore(b)));
       const activeProds = db.getPublicProducts(selectedBusinessFilter !== 'ALL' ? selectedBusinessFilter : undefined)
-        .filter((p) => p.businessId !== 'SHOP-001' && p.businessId !== 'SHOP-002');
+        .filter((p) => p.ownerId !== 'USR-METRO' && p.ownerId !== 'USR-VALLEY');
       setPublicProducts(activeProds);
     };
     window.addEventListener('spm_storage_update', handleUpdate);
@@ -305,9 +317,10 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
             {currentUser ? (
               <button
                 onClick={onReturnToDashboard}
-                className="px-2.5 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all cursor-pointer shadow-xs whitespace-nowrap"
+                className="px-2.5 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all cursor-pointer shadow-xs whitespace-nowrap flex items-center gap-1.5"
               >
-                <span className="hidden sm:inline">Go to Workspace </span>
+                <Building2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Go to Workspace</span>
                 <span className="sm:hidden">Workspace</span>
               </button>
             ) : (
@@ -316,7 +329,7 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
                 <button
                   id="btn-nav-login"
                   onClick={onOpenLogin}
-                  className="px-2 sm:px-3.5 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-slate-700 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-300 hover:border-slate-400 rounded-xl transition-all cursor-pointer whitespace-nowrap shadow-2xs flex items-center gap-1"
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-slate-700 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-300 hover:border-slate-400 rounded-xl transition-all cursor-pointer whitespace-nowrap shadow-2xs flex items-center gap-1"
                   title="Sign In to your store account"
                 >
                   <LogIn className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
@@ -327,13 +340,11 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
                 <button
                   id="btn-nav-register"
                   onClick={onOpenRegister}
-                  className="px-2.5 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm shadow-emerald-600/30 rounded-xl transition-all flex items-center gap-1 sm:gap-1.5 cursor-pointer whitespace-nowrap"
+                  className="px-2 sm:px-3.5 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm shadow-emerald-600/30 rounded-xl transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap"
                   title="Register a new store on SPM"
                 >
                   <Store className="w-3.5 h-3.5 shrink-0" />
-                  <span className="hidden xs:inline">{t('registerBusiness', 'Register Store')}</span>
-                  <span className="xs:hidden">Register</span>
-                  <ArrowRight className="hidden sm:inline w-3.5 h-3.5" />
+                  <span>{t('registerBusiness', 'Register')}</span>
                 </button>
               </div>
             )}

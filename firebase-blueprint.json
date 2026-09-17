@@ -80,6 +80,22 @@
         "timestamp": { "type": "string" }
       },
       "required": ["id", "businessId", "productId", "type", "quantity", "timestamp"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "POS sales transaction record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "businessId": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "customerName": { "type": "string" },
+        "totalAmount": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "paymentStatus": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "businessId", "invoiceNumber", "totalAmount", "paymentMethod", "paymentStatus", "createdAt"]
     }
   },
   "firestore": {
@@ -98,6 +114,10 @@
     "/movements/{movementId}": {
       "schema": "Movement",
       "description": "Historical inventory movements"
+    },
+    "/sales/{saleId}": {
+      "schema": "Sale",
+      "description": "POS sales records"
     }
   }
 }

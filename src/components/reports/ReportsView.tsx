@@ -91,11 +91,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ businessId, business }
   // Product estimated COGS and profit from completed sales
   let totalCOGS = 0;
   filteredSales.forEach((sale) => {
-    sale.items.forEach((item) => {
-      const prod = products.find((p) => p.id === item.productId);
-      const unitCost = prod ? prod.purchasePrice : 0;
-      totalCOGS += unitCost * item.quantity;
-    });
+    if (Array.isArray(sale.items)) {
+      sale.items.forEach((item) => {
+        const prod = products.find((p) => p.id === item.productId);
+        const unitCost = prod ? prod.purchasePrice : 0;
+        totalCOGS += unitCost * (item.quantity || 0);
+      });
+    }
   });
 
   const estimatedGrossProfit = totalGrossSales - totalDiscounts - totalCOGS;
@@ -107,7 +109,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ businessId, business }
       s.invoiceNumber,
       `"${formatDate(s.createdAt)}"`,
       `"${(s.customerName || 'Walk-in').replace(/"/g, '""')}"`,
-      s.items.reduce((a, c) => a + c.quantity, 0),
+      (Array.isArray(s.items) ? s.items : []).reduce((a, c) => a + (c.quantity || 0), 0),
       s.subtotal,
       s.discount,
       s.tax,

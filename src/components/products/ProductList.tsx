@@ -532,9 +532,13 @@ export const ProductList: React.FC<ProductListProps> = ({
                             <div className="flex items-center gap-1.5">
                               <span className="font-bold text-slate-900 text-sm">{p.name}</span>
                               {p.isPublic ? (
-                                <Globe className="w-3 h-3 text-emerald-600" title="Visible on Public Catalog" />
+                                <span title="Visible on Public Catalog">
+                                  <Globe className="w-3 h-3 text-emerald-600" />
+                                </span>
                               ) : (
-                                <Lock className="w-3 h-3 text-slate-400" title="Private Product" />
+                                <span title="Private Product">
+                                  <Lock className="w-3 h-3 text-slate-400" />
+                                </span>
                               )}
                             </div>
                             <span className="text-[11px] text-slate-400 line-clamp-1">{p.brand || 'No Brand'} • {p.supplier || 'No Supplier'}</span>

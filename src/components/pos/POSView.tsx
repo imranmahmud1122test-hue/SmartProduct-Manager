@@ -71,8 +71,6 @@ export const POSView: React.FC<POSViewProps> = ({
   const handlePrintReceipt = () => {
     if (completedSale) {
       printThermalReceipt(completedSale, business, completedSale.cashierName || currentUser.name);
-    } else {
-      window.print();
     }
   };
 

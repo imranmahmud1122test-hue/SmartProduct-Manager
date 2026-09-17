@@ -96,6 +96,7 @@ export interface OrderItem {
   quantity: number;
   subtotal: number;
   unit?: string;
+  unitSnapshot?: string;
   ownerId: string;
   ownerNameSnapshot?: string;
   storeId: string; // Business ID
@@ -123,6 +124,7 @@ export interface Order {
   ownerNameSnapshot: string;
   storeId: string; // Business ID
   storeNameSnapshot: string;
+  businessNameSnapshot?: string;
   quantity: number;
   unitPriceSnapshot: number;
   subtotal: number;
@@ -131,6 +133,7 @@ export interface Order {
   orderStatus: OrderStatus;
   paymentStatus: PaymentStatus;
   paymentMethod: 'cash_on_delivery' | 'mobile_banking' | 'card' | 'online';
+  businessId?: string; // Optional business ID mirror for multi-tenant querying
   statusHistory: OrderStatusHistory[];
   createdAt: string;
   updatedAt: string;
@@ -258,6 +261,7 @@ export interface Sale {
   changeAmount: number;
   notes?: string;
   createdAt: string;
+  cashierId?: string;
   cashierName: string;
 }
 

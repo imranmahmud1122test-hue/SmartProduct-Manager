@@ -18,6 +18,7 @@ import {
 import { Order, OrderStatus } from '../../types';
 import { db } from '../../services/storage';
 import { formatCurrency } from '../../utils/codeGenerators';
+import { printOrderReceipt } from '../../utils/printHelper';
 
 interface TrackOrderModalProps {
   isOpen: boolean;
@@ -48,7 +49,7 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSearch = useCallback((ordId = orderIdInput, ph = phoneInput) => {
+  const handleSearch = useCallback(async (ordId = orderIdInput, ph = phoneInput) => {
     setErrorMessage('');
     if (!ordId.trim()) {
       setErrorMessage('Please enter your Order ID');
@@ -61,16 +62,25 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({
 
     setIsLoading(true);
     setSearched(true);
-    setTimeout(() => {
-      const match = db.trackOrder(ordId, ph);
+    try {
+      const match = await db.trackOrderOnline(ordId, ph);
       if (match) {
         setFoundOrder(match);
       } else {
         setFoundOrder(null);
         setErrorMessage('No matching order found. Please verify your Order ID and phone number.');
       }
+    } catch {
+      const fallback = db.trackOrder(ordId, ph);
+      if (fallback) {
+        setFoundOrder(fallback);
+      } else {
+        setFoundOrder(null);
+        setErrorMessage('No matching order found. Please verify your Order ID and phone number.');
+      }
+    } finally {
       setIsLoading(false);
-    }, 200);
+    }
   }, [orderIdInput, phoneInput]);
 
   useEffect(() => {
@@ -318,6 +328,21 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({
                     Payment: <strong className="uppercase">{foundOrder.paymentMethod.replace(/_/g, ' ')}</strong> ({foundOrder.paymentStatus})
                   </div>
                 </div>
+              </div>
+
+              {/* Print Receipt Action */}
+              <div className="flex items-center justify-end pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const business = foundOrder.storeId ? db.getBusinessById(foundOrder.storeId) : db.getBusinesses()[0];
+                    printOrderReceipt(foundOrder, business || null);
+                  }}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs border border-slate-200 transition-all flex items-center gap-1.5 shadow-2xs"
+                >
+                  <Printer className="w-4 h-4 text-slate-600" />
+                  Print / Save Receipt
+                </button>
               </div>
             </div>
           )}
