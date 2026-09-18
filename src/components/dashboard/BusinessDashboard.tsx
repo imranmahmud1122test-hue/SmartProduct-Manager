@@ -21,7 +21,13 @@ import {
   SlidersHorizontal,
   History,
   ClipboardList,
-  Trash2
+  Trash2,
+  Settings,
+  Store,
+  Edit,
+  ShieldCheck,
+  Phone,
+  MapPin
 } from 'lucide-react';
 import { db } from '../../services/storage';
 import { Product, Sale, InventoryMovement, Business, User, Order } from '../../types';
@@ -226,8 +232,69 @@ export const BusinessDashboard: React.FC<BusinessDashboardProps> = ({
             >
               <Plus className="w-4 h-4" /> {t('addProduct', 'Add Product')}
             </button>
+            <button
+              id="btn-dash-edit-profile"
+              onClick={() => onNavigate('settings')}
+              className="px-3.5 py-2.5 sm:px-4 sm:py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl border border-slate-700 shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Settings className="w-4 h-4 text-emerald-400" /> Edit Shop Profile
+            </button>
           </div>
         </div>
+      </div>
+
+      {/* SHOP PROFILE OVERVIEW BAR FOR BUSINESS OWNER */}
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-center space-x-3 sm:space-x-4 min-w-0">
+          <div className="relative shrink-0">
+            {business?.logoUrl ? (
+              <img
+                src={business.logoUrl}
+                alt={business.name}
+                className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl object-cover border-2 border-emerald-500 shadow-xs"
+              />
+            ) : (
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-black text-xl flex items-center justify-center border border-slate-200 shadow-xs">
+                {business?.name ? business.name.charAt(0).toUpperCase() : 'S'}
+              </div>
+            )}
+            <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] shadow-xs">
+              <ShieldCheck className="w-3.5 h-3.5" />
+            </span>
+          </div>
+
+          <div className="min-w-0 space-y-0.5">
+            <div className="flex items-center gap-2">
+              <h3 className="font-extrabold text-slate-900 text-base sm:text-lg truncate">
+                {business?.name || currentUser.businessName || 'Your Supermarket Shop'}
+              </h3>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold uppercase tracking-wider shrink-0">
+                {business?.businessType || 'Supermarket'}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 font-medium">
+              {business?.phone && (
+                <span className="flex items-center gap-1">
+                  <Phone className="w-3.5 h-3.5 text-slate-400" /> {business.phone}
+                </span>
+              )}
+              {business?.address && (
+                <span className="flex items-center gap-1 truncate max-w-xs">
+                  <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" /> {business.address}
+                </span>
+              )}
+              <span className="text-slate-400 font-mono text-[11px]">ID: {businessId}</span>
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={() => onNavigate('settings')}
+          className="w-full md:w-auto px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
+        >
+          <Edit className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Edit Shop Profile</span>
+        </button>
       </div>
 
       {/* CORE STOCK EQUATION OVERVIEW BAR (Prompt Mandate #3 & #8) */}

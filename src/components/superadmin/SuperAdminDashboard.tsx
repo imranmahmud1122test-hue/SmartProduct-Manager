@@ -29,13 +29,31 @@ import {
   AlertTriangle,
   ClipboardList,
   Truck,
-  MapPin
+  MapPin,
+  Trash2,
+  UserX,
+  UserCheck,
+  Key,
+  Copy,
+  Store,
+  AlertOctagon,
+  UserPlus,
+  Shield,
+  Briefcase,
+  Layers,
+  Lock,
+  RefreshCw,
+  SlidersHorizontal,
+  ChevronRight,
+  Info
 } from 'lucide-react';
 import { db } from '../../services/storage';
-import { Business, User, SupportSettings, SupportTicket, Order } from '../../types';
+import { adminApi } from '../../services/adminApi';
+import { Business, User, UserRole, SupportSettings, SupportTicket, Order } from '../../types';
 import { formatCurrency, formatDate } from '../../utils/codeGenerators';
 import { Logo } from '../common/Logo';
 import { useLanguage, LanguageSwitcher } from '../../context/LanguageContext';
+import { SmtpDiagnosticPanel } from './SmtpDiagnosticPanel';
 
 interface SuperAdminDashboardProps {
   currentUser: User;
@@ -48,15 +66,59 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   onLogout,
   onSwitchToBusiness,
 }) => {
-  const [activeAdminTab, setActiveAdminTab] = useState<'workspaces' | 'orders' | 'support_settings' | 'support_tickets'>('workspaces');
+  // Security validation: verify super_admin role
+  if (currentUser.role !== 'super_admin') {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl p-8 max-w-md w-full text-center shadow-2xl border border-rose-200">
+          <div className="w-16 h-16 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4">
+            <Lock className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-black text-slate-900 mb-2">Access Denied</h2>
+          <p className="text-sm text-slate-600 mb-6">
+            Super Administrator permissions are required to access this portal. Your session does not have administrative clearance.
+          </p>
+          <button
+            onClick={onLogout}
+            className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-sm transition-all"
+          >
+            Return to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'workspaces' | 'orders' | 'support_settings' | 'support_tickets' | 'smtp_diagnostics'>('users');
+  const [userSubTab, setUserSubTab] = useState<'all_users' | 'business_owners'>('all_users');
+  
+  // Data states
+  const [users, setUsers] = useState<User[]>([]);
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  
+  // Search & Filter states
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState<string>('ALL');
+  const [userStatusFilter, setUserStatusFilter] = useState<string>('ALL');
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>('ALL');
   const [orderBusinessFilter, setOrderBusinessFilter] = useState<string>('ALL');
+  
+  // Action Modals
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [alsoDeleteAssociatedStore, setAlsoDeleteAssociatedStore] = useState(true);
+  const [businessOwnerToDelete, setBusinessOwnerToDelete] = useState<Business | null>(null);
+  const [businessOwnerToDeactivate, setBusinessOwnerToDeactivate] = useState<Business | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [inspectOrder, setInspectOrder] = useState<Order | null>(null);
+  
   const { t } = useLanguage();
 
   // Support Settings state
@@ -75,7 +137,15 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [phone, setPhone] = useState('');
   const [currencySymbol, setCurrencySymbol] = useState('৳');
 
+  // New User Creation fields
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserRole, setNewUserRole] = useState<UserRole>('staff');
+  const [newUserBusinessId, setNewUserBusinessId] = useState<string>('');
+  const [newUserPhone, setNewUserPhone] = useState('');
+
   const loadData = () => {
+    setUsers(db.getUsers());
     setBusinesses(db.getBusinesses());
     setSupportSettings(db.getSupportSettings());
     setTickets(db.getSupportTickets());
@@ -85,6 +155,11 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   useEffect(() => {
     loadData();
 
+    // Verify Super Admin server session in background
+    adminApi.getAdminToken(currentUser).catch(err => {
+      console.warn('Super Admin server token background check:', err);
+    });
+
     const handleUpdate = () => loadData();
     window.addEventListener('spm_order_update', handleUpdate);
     window.addEventListener('spm_storage_update', handleUpdate);
@@ -92,17 +167,155 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       window.removeEventListener('spm_order_update', handleUpdate);
       window.removeEventListener('spm_storage_update', handleUpdate);
     };
-  }, []);
+  }, [currentUser]);
 
   const stats = db.getPlatformStats();
   const logs = db.getAuditLogs();
 
-  const handleToggleStatus = (biz: Business) => {
-    const nextStatus = biz.status === 'active' ? 'suspended' : 'active';
-    db.updateBusiness(biz.id, { status: nextStatus });
-    loadData();
+  const copyToClipboard = (text: string, idKey: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(idKey);
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
+  // -------------------------------------------------------------------------
+  // USER & BUSINESS OWNER ACTIONS (WITH SERVER ENFORCEMENT & CONFIRMATIONS)
+  // -------------------------------------------------------------------------
+
+  // Delete User Account
+  const handleConfirmDeleteUser = async () => {
+    if (!userToDelete) return;
+    setIsProcessing(true);
+    setActionError(null);
+
+    const targetUserId = userToDelete.id;
+    const targetBusinessId = userToDelete.businessId;
+    const shouldPurgeStore = alsoDeleteAssociatedStore && Boolean(targetBusinessId);
+
+    try {
+      // 1. Delete user locally and from Firestore
+      db.deleteUser(targetUserId, currentUser);
+
+      // 2. Notify backend server-side admin endpoint
+      try {
+        await adminApi.deleteUser(targetUserId, currentUser);
+      } catch (srvErr) {
+        console.warn('Notice from server user deletion endpoint:', srvErr);
+      }
+
+      // 3. If cascade store purge is requested, delete the associated business workspace
+      if (shouldPurgeStore && targetBusinessId) {
+        try {
+          db.deleteBusiness(targetBusinessId, currentUser);
+          await adminApi.deleteBusinessOwner(targetBusinessId, currentUser);
+        } catch (bizErr) {
+          console.warn('Notice deleting associated store workspace:', bizErr);
+        }
+      }
+      
+      setUserToDelete(null);
+      setAlsoDeleteAssociatedStore(true);
+      loadData();
+    } catch (err: any) {
+      setActionError(err.message || 'Failed to delete user.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Toggle User Status
+  const handleToggleUserStatus = (targetUser: User) => {
+    const nextStatus = targetUser.status === 'active' ? 'deactivated' : 'active';
+    try {
+      db.updateUserStatus(targetUser.id, nextStatus, currentUser);
+      loadData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update user status.');
+    }
+  };
+
+  // Delete Business Owner & Store Workspace
+  const handleConfirmDeleteBusinessOwner = async () => {
+    if (!businessOwnerToDelete) return;
+    setIsProcessing(true);
+    setActionError(null);
+
+    const targetBizId = businessOwnerToDelete.id;
+
+    try {
+      // 1. Synchronize local store & firestore
+      db.deleteBusiness(targetBizId, currentUser);
+
+      // 2. Enforce backend server-side permission & audit check
+      try {
+        await adminApi.deleteBusinessOwner(targetBizId, currentUser);
+      } catch (srvErr) {
+        console.warn('Notice from server business owner deletion endpoint:', srvErr);
+      }
+
+      setBusinessOwnerToDelete(null);
+      loadData();
+    } catch (err: any) {
+      setActionError(err.message || 'Failed to delete business owner.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Deactivate / Reactivate Business Owner
+  const handleConfirmDeactivateBusinessOwner = async () => {
+    if (!businessOwnerToDeactivate) return;
+    setIsProcessing(true);
+    setActionError(null);
+
+    const nextStatus = businessOwnerToDeactivate.status === 'active' ? 'deactivated' : 'active';
+
+    try {
+      // 1. Enforce backend server-side permission
+      const serverResult = await adminApi.updateBusinessOwnerStatus(businessOwnerToDeactivate.id, nextStatus, currentUser);
+      if (!serverResult.success && serverResult.error) {
+        throw new Error(serverResult.error);
+      }
+
+      // 2. Synchronize local store & firestore
+      db.updateBusinessStatus(businessOwnerToDeactivate.id, nextStatus, currentUser);
+
+      setBusinessOwnerToDeactivate(null);
+      loadData();
+    } catch (err: any) {
+      setActionError(err.message || 'Failed to update business owner status.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Create User by Super Admin
+  const handleCreateUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newUserEmail.trim() || !newUserName.trim()) return;
+
+    try {
+      db.addUser({
+        name: newUserName.trim(),
+        email: newUserEmail.trim().toLowerCase(),
+        role: newUserRole,
+        businessId: newUserRole === 'super_admin' ? '' : newUserBusinessId || 'SHOP-001',
+        phone: newUserPhone.trim(),
+      });
+
+      setIsAddUserOpen(false);
+      setNewUserName('');
+      setNewUserEmail('');
+      setNewUserRole('staff');
+      setNewUserBusinessId('');
+      setNewUserPhone('');
+      loadData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to create user.');
+    }
+  };
+
+  // Create Business
   const handleCreateBusiness = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !email.trim()) return;
@@ -137,6 +350,41 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     loadData();
   };
 
+  // Filtered Users
+  const filteredUsers = users.filter((u) => {
+    const q = userSearchQuery.toLowerCase().trim();
+    const matchesSearch =
+      !q ||
+      u.name.toLowerCase().includes(q) ||
+      u.email.toLowerCase().includes(q) ||
+      u.id.toLowerCase().includes(q) ||
+      (u.phone && u.phone.toLowerCase().includes(q)) ||
+      (u.businessId && u.businessId.toLowerCase().includes(q));
+
+    const matchesRole = userRoleFilter === 'ALL' || u.role === userRoleFilter;
+    const matchesStatus = userStatusFilter === 'ALL' || u.status === userStatusFilter;
+
+    return matchesSearch && matchesRole && matchesStatus;
+  });
+
+  // Filtered Business Owners
+  const businessOwners = users.filter((u) => u.role === 'business_owner' || u.role === 'owner');
+  const filteredBusinessOwners = businesses.filter((b) => {
+    const q = userSearchQuery.toLowerCase().trim();
+    const owner = users.find((u) => u.id === b.ownerId || u.businessId === b.id);
+    const matchesSearch =
+      !q ||
+      b.name.toLowerCase().includes(q) ||
+      b.id.toLowerCase().includes(q) ||
+      b.ownerName.toLowerCase().includes(q) ||
+      b.email.toLowerCase().includes(q) ||
+      (b.ownerId && b.ownerId.toLowerCase().includes(q)) ||
+      (owner?.id && owner.id.toLowerCase().includes(q));
+
+    const matchesStatus = userStatusFilter === 'ALL' || b.status === userStatusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
   const filteredBusinesses = businesses.filter((b) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
@@ -150,32 +398,104 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
   const openTicketsCount = tickets.filter((t) => t.status === 'open').length;
 
+  const roleBadge = (role: UserRole) => {
+    switch (role) {
+      case 'super_admin':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-purple-100 text-purple-800 border border-purple-200">
+            <Shield className="w-3 h-3 text-purple-600" /> Super Admin
+          </span>
+        );
+      case 'business_owner':
+      case 'owner':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-blue-100 text-blue-800 border border-blue-200">
+            <Store className="w-3 h-3 text-blue-600" /> Business Owner
+          </span>
+        );
+      case 'manager':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+            <Briefcase className="w-3 h-3 text-amber-600" /> Store Manager
+          </span>
+        );
+      case 'cashier':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+            <DollarSign className="w-3 h-3 text-emerald-600" /> Cashier / POS
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+            <Users className="w-3 h-3 text-slate-500" /> {role}
+          </span>
+        );
+    }
+  };
+
+  const statusBadge = (status: string) => {
+    switch (status) {
+      case 'active':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Active
+          </span>
+        );
+      case 'pending':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-amber-50 text-amber-700 border border-amber-200" title="Account inactive pending Gmail verification">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span> Pending Gmail
+          </span>
+        );
+      case 'suspended':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-amber-50 text-amber-700 border border-amber-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Suspended
+          </span>
+        );
+      case 'deactivated':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-rose-50 text-rose-700 border border-rose-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Deactivated
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-slate-100 text-slate-700">
+            {status}
+          </span>
+        );
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col">
+    <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
       {/* Super Admin Top Header */}
-      <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-40">
+      <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <Logo size="sm" variant="mark" />
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="font-black text-base tracking-tight text-white">Smart Product Manager</h1>
-                <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 text-[10px] font-bold uppercase tracking-wider border border-purple-500/30">
-                  Super Admin Panel
+                <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 text-[10px] font-bold uppercase tracking-wider border border-purple-500/30 flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3 text-purple-400" /> Super Admin Portal
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">SPM Multi-Tenant Governance & Support Settings Hub</p>
+              <p className="text-[11px] text-slate-400">Enterprise User Governance, Multi-Tenant Store & Security Management</p>
             </div>
           </div>
 
           <div className="flex items-center space-x-3">
             <LanguageSwitcher variant="header" />
-            <span className="text-xs text-slate-400 hidden sm:inline">
-              {currentUser.name}
-            </span>
+            <div className="hidden md:flex flex-col text-right">
+              <span className="text-xs font-bold text-white">{currentUser.name}</span>
+              <span className="text-[10px] text-purple-300 font-mono">ID: {currentUser.id}</span>
+            </div>
             <button
               onClick={onLogout}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700 shadow-xs"
             >
               <LogOut className="w-3.5 h-3.5" /> {t('logout', 'Logout')}
             </button>
@@ -184,25 +504,40 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       </header>
 
       {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 flex-1 w-full">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 flex-1 w-full">
         {/* Navigation Tabs for Super Admin */}
         <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-2 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={() => setActiveAdminTab('users')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                activeAdminTab === 'users'
+                  ? 'bg-purple-700 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <Users className="w-4 h-4 text-purple-300" />
+              <span>User Management</span>
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${activeAdminTab === 'users' ? 'bg-purple-900 text-purple-200' : 'bg-slate-200 text-slate-700'}`}>
+                {users.length}
+              </span>
+            </button>
+
             <button
               onClick={() => setActiveAdminTab('workspaces')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
                 activeAdminTab === 'workspaces'
                   ? 'bg-slate-900 text-white shadow-sm'
                   : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
               <Building2 className="w-4 h-4 text-purple-400" />
-              <span>Workspaces ({businesses.length})</span>
+              <span>Store Workspaces ({businesses.length})</span>
             </button>
 
             <button
               onClick={() => setActiveAdminTab('orders')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer relative ${
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer relative ${
                 activeAdminTab === 'orders'
                   ? 'bg-slate-900 text-white shadow-sm'
                   : 'text-slate-600 hover:bg-slate-100'
@@ -216,20 +551,8 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             </button>
 
             <button
-              onClick={() => setActiveAdminTab('support_settings')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-                activeAdminTab === 'support_settings'
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <Settings className="w-4 h-4 text-emerald-400" />
-              <span>Support Contact Settings</span>
-            </button>
-
-            <button
               onClick={() => setActiveAdminTab('support_tickets')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer relative ${
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer relative ${
                 activeAdminTab === 'support_tickets'
                   ? 'bg-slate-900 text-white shadow-sm'
                   : 'text-slate-600 hover:bg-slate-100'
@@ -243,19 +566,517 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                 </span>
               )}
             </button>
+
+            <button
+              onClick={() => setActiveAdminTab('support_settings')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                activeAdminTab === 'support_settings'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <Settings className="w-4 h-4 text-emerald-400" />
+              <span>Support Contact</span>
+            </button>
+
+            <button
+              onClick={() => setActiveAdminTab('smtp_diagnostics')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                activeAdminTab === 'smtp_diagnostics'
+                  ? 'bg-purple-700 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <Mail className="w-4 h-4 text-purple-300" />
+              <span>SMTP Diagnostics</span>
+            </button>
           </div>
 
-          {activeAdminTab === 'workspaces' && (
-            <button
-              onClick={() => setIsAddOpen(true)}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" /> Provision New Business
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {activeAdminTab === 'users' && (
+              <button
+                onClick={() => setIsAddUserOpen(true)}
+                className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <UserPlus className="w-3.5 h-3.5" /> Add New User
+              </button>
+            )}
+            {activeAdminTab === 'workspaces' && (
+              <button
+                onClick={() => setIsAddOpen(true)}
+                className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" /> Provision New Store
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* TAB 1: Workspaces Overview & Metrics */}
+        {/* ------------------------------------------------------------- */}
+        {/* TAB 1: SUPER ADMIN USER MANAGEMENT                            */}
+        {/* ------------------------------------------------------------- */}
+        {activeAdminTab === 'users' && (
+          <div className="space-y-6">
+            {/* User Management Metrics */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-5 bg-white rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-semibold text-slate-500 block">Total Registered Users</span>
+                  <span className="text-3xl font-black text-slate-900 mt-1 block">{users.length}</span>
+                  <span className="text-[11px] text-purple-600 font-medium">All User Roles Combined</span>
+                </div>
+                <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                  <Users className="w-6 h-6" />
+                </div>
+              </div>
+
+              <div className="p-5 bg-white rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-semibold text-slate-500 block">Business Owners</span>
+                  <span className="text-3xl font-black text-blue-700 mt-1 block">{businesses.length}</span>
+                  <span className="text-[11px] text-blue-600 font-medium">Store & Merchant Accounts</span>
+                </div>
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <Store className="w-6 h-6" />
+                </div>
+              </div>
+
+              <div className="p-5 bg-white rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-semibold text-slate-500 block">Active Cashiers & Staff</span>
+                  <span className="text-3xl font-black text-emerald-700 mt-1 block">
+                    {users.filter((u) => u.role === 'cashier' || u.role === 'staff' || u.role === 'manager').length}
+                  </span>
+                  <span className="text-[11px] text-emerald-600 font-medium">Store Operations Team</span>
+                </div>
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <DollarSign className="w-6 h-6" />
+                </div>
+              </div>
+
+              <div className="p-5 bg-white rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-semibold text-slate-500 block">Deactivated Accounts</span>
+                  <span className="text-3xl font-black text-rose-700 mt-1 block">
+                    {users.filter((u) => u.status === 'deactivated' || u.status === 'suspended').length}
+                  </span>
+                  <span className="text-[11px] text-rose-600 font-medium">Restricted / Suspended</span>
+                </div>
+                <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                  <UserX className="w-6 h-6" />
+                </div>
+              </div>
+            </div>
+
+            {/* Sub-view Switcher & Filters */}
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-5">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+                <div>
+                  <h2 className="text-lg font-black text-slate-900">User Management & Role Governance</h2>
+                  <p className="text-xs text-slate-500">
+                    Oversee all platform registered users, assign roles, view unique User IDs & Business Owner IDs, and securely manage access.
+                  </p>
+                </div>
+
+                {/* Sub-Tabs: All Users vs Business Owners */}
+                <div className="inline-flex bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
+                  <button
+                    onClick={() => setUserSubTab('all_users')}
+                    className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      userSubTab === 'all_users'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5 text-purple-600" />
+                    All Registered Users ({users.length})
+                  </button>
+                  <button
+                    onClick={() => setUserSubTab('business_owners')}
+                    className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      userSubTab === 'business_owners'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                    Business Owners Directory ({businesses.length})
+                  </button>
+                </div>
+              </div>
+
+              {/* Search & Filter Bar */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative flex-1 min-w-[240px]">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder={
+                      userSubTab === 'all_users'
+                        ? 'Search by name, email, unique User ID, phone, store...'
+                        : 'Search by store name, business owner name, owner ID, store ID...'
+                    }
+                    value={userSearchQuery}
+                    onChange={(e) => setUserSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-purple-500 focus:bg-white transition-all"
+                  />
+                  {userSearchQuery && (
+                    <button
+                      onClick={() => setUserSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                {userSubTab === 'all_users' && (
+                  <div className="flex items-center gap-2">
+                    <Filter className="w-3.5 h-3.5 text-slate-400 hidden sm:inline" />
+                    <select
+                      value={userRoleFilter}
+                      onChange={(e) => setUserRoleFilter(e.target.value)}
+                      className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                    >
+                      <option value="ALL">All Roles ({users.length})</option>
+                      <option value="super_admin">Super Admins</option>
+                      <option value="business_owner">Business Owners</option>
+                      <option value="manager">Store Managers</option>
+                      <option value="cashier">Cashiers</option>
+                      <option value="staff">Staff</option>
+                      <option value="public_visitor">Public Visitors</option>
+                    </select>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <select
+                    value={userStatusFilter}
+                    onChange={(e) => setUserStatusFilter(e.target.value)}
+                    className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="active">Active</option>
+                    <option value="suspended">Suspended</option>
+                    <option value="deactivated">Deactivated</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* ----------------------------------------------------------- */}
+              {/* SUB-TAB 1: ALL REGISTERED USERS TABLE                       */}
+              {/* ----------------------------------------------------------- */}
+              {userSubTab === 'all_users' && (
+                <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                  <table className="w-full text-left text-xs border-collapse min-w-[980px]">
+                    <thead>
+                      <tr className="bg-slate-900 text-slate-200 text-[11px] font-bold uppercase tracking-wider">
+                        <th className="py-3.5 px-4 w-44">Unique User ID</th>
+                        <th className="py-3.5 px-4">User Name & Email</th>
+                        <th className="py-3.5 px-4">Role</th>
+                        <th className="py-3.5 px-4">Assigned Store</th>
+                        <th className="py-3.5 px-4 text-center">Status</th>
+                        <th className="py-3.5 px-4">Created</th>
+                        <th className="py-3.5 px-4 text-right pr-6 min-w-[220px]">Actions & Deletion</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                      {filteredUsers.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-12 text-center text-slate-400">
+                            <Users className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                            <p className="font-semibold">No registered users matched the filter criteria.</p>
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredUsers.map((u) => {
+                          const userBiz = businesses.find((b) => b.id === u.businessId);
+                          const isRootAdmin = u.id === 'USR-ADMIN-IMRAN' || u.id === 'USR-ADMIN' || u.email.toLowerCase() === 'imranmahmud1122.test@gmail.com';
+                          const isSelf = u.id === currentUser.id;
+
+                          return (
+                            <tr key={u.id} className="hover:bg-slate-50/80 transition-colors">
+                              {/* Unique User ID */}
+                              <td className="py-3.5 px-4 font-mono">
+                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200/80 text-purple-900 font-bold text-[11px]">
+                                  <span>{u.id}</span>
+                                  <button
+                                    onClick={() => copyToClipboard(u.id, `user-${u.id}`)}
+                                    title="Copy Unique User ID"
+                                    className="p-0.5 hover:text-purple-600 cursor-pointer"
+                                  >
+                                    {copiedId === `user-${u.id}` ? (
+                                      <Check className="w-3 h-3 text-emerald-600" />
+                                    ) : (
+                                      <Copy className="w-3 h-3 text-slate-400" />
+                                    )}
+                                  </button>
+                                </div>
+                              </td>
+
+                              {/* User Details */}
+                              <td className="py-3.5 px-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-black text-xs flex items-center justify-center shrink-0 border border-purple-200">
+                                    {u.name.substring(0, 2).toUpperCase()}
+                                  </div>
+                                  <div>
+                                    <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                                      {u.name}
+                                      {isSelf && (
+                                        <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-purple-100 text-purple-700">
+                                          You
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-[11px] text-slate-500">{u.email}</div>
+                                    {u.phone && <div className="text-[10px] text-slate-400">{u.phone}</div>}
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Role */}
+                              <td className="py-3.5 px-4">{roleBadge(u.role)}</td>
+
+                              {/* Store / Workspace */}
+                              <td className="py-3.5 px-4">
+                                {u.role === 'super_admin' ? (
+                                  <span className="text-[11px] font-semibold text-purple-700">
+                                    Global Platform
+                                  </span>
+                                ) : userBiz ? (
+                                  <div>
+                                    <span className="font-semibold text-slate-900 text-xs block">{userBiz.name}</span>
+                                    <span className="text-[10px] font-mono text-slate-400">ID: {userBiz.id}</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-[11px] text-slate-400 italic">No workspace assigned</span>
+                                )}
+                              </td>
+
+                              {/* Status */}
+                              <td className="py-3.5 px-4 text-center">{statusBadge(u.status || 'active')}</td>
+
+                              {/* Created At */}
+                              <td className="py-3.5 px-4 text-[11px] text-slate-500 whitespace-nowrap">
+                                {formatDate(u.createdAt)}
+                              </td>
+
+                              {/* Actions */}
+                              <td className="py-3.5 px-4 text-right pr-6">
+                                <div className="flex items-center justify-end gap-2">
+                                  {/* Quick Verify Gmail button for Pending users */}
+                                  {!isRootAdmin && (u.status === 'pending' || !u.isGmailVerified) && (
+                                    <button
+                                      onClick={() => {
+                                        db.updateUserStatus(u.id, 'active', currentUser);
+                                        loadData();
+                                      }}
+                                      title="Approve and force-verify Gmail account"
+                                      className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <ShieldCheck className="w-3.5 h-3.5 text-purple-200" />
+                                      <span className="hidden sm:inline">Verify Gmail</span>
+                                    </button>
+                                  )}
+
+                                  {/* Toggle status */}
+                                  {!isRootAdmin && !isSelf && (
+                                    <button
+                                      onClick={() => handleToggleUserStatus(u)}
+                                      title={u.status === 'active' ? 'Deactivate User Account' : 'Activate User Account'}
+                                      className={`px-2.5 py-1.5 rounded-xl border font-bold text-xs transition-colors cursor-pointer flex items-center gap-1 shadow-2xs ${
+                                        u.status === 'active'
+                                          ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                          : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                      }`}
+                                    >
+                                      {u.status === 'active' ? (
+                                        <>
+                                          <UserX className="w-3.5 h-3.5" />
+                                          <span className="hidden sm:inline">Deactivate</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <UserCheck className="w-3.5 h-3.5" />
+                                          <span className="hidden sm:inline">Activate</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  )}
+
+                                  {/* Permanent Delete User */}
+                                  {isRootAdmin || isSelf ? (
+                                    <span
+                                      className="px-2.5 py-1.5 bg-slate-100 text-slate-400 text-xs font-bold rounded-xl border border-slate-200 cursor-not-allowed inline-flex items-center gap-1"
+                                      title="Root Super Admin account is protected from deletion."
+                                    >
+                                      <Shield className="w-3.5 h-3.5 text-slate-400" /> Protected
+                                    </span>
+                                  ) : (
+                                    <button
+                                      onClick={() => {
+                                        setAlsoDeleteAssociatedStore(Boolean(u.businessId));
+                                        setUserToDelete(u);
+                                      }}
+                                      className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs hover:border-rose-300"
+                                      title="Permanently Delete User Account"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                      <span>Permanent Delete</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* ----------------------------------------------------------- */}
+              {/* SUB-TAB 2: BUSINESS OWNERS DIRECTORY TABLE                  */}
+              {/* ----------------------------------------------------------- */}
+              {userSubTab === 'business_owners' && (
+                <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                  <table className="w-full text-left text-xs border-collapse min-w-[1040px]">
+                    <thead>
+                      <tr className="bg-slate-900 text-slate-200 text-[11px] font-bold uppercase tracking-wider">
+                        <th className="py-3.5 px-4 w-44">Business Owner ID</th>
+                        <th className="py-3.5 px-4">Business / Store Name & ID</th>
+                        <th className="py-3.5 px-4">Owner Contact & Profile</th>
+                        <th className="py-3.5 px-4 text-center">Catalog & Sales</th>
+                        <th className="py-3.5 px-4 text-center">Status</th>
+                        <th className="py-3.5 px-4">Registered Date</th>
+                        <th className="py-3.5 px-4 text-right pr-6 min-w-[280px]">Actions & Deletion</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                      {filteredBusinessOwners.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-12 text-center text-slate-400">
+                            <Store className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                            <p className="font-semibold">No business owners matched the search criteria.</p>
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredBusinessOwners.map((biz) => {
+                          const ownerUser = users.find((u) => u.id === biz.ownerId || u.businessId === biz.id);
+                          const ownerIdDisplay = biz.ownerId || ownerUser?.id || `BO-${biz.id.replace('SHOP-', '')}`;
+                          const bProducts = db.getProducts(biz.id);
+                          const bSales = db.getSales(biz.id);
+                          const bRev = bSales.reduce((acc, s) => acc + s.totalAmount, 0);
+
+                          return (
+                            <tr key={biz.id} className="hover:bg-slate-50/80 transition-colors">
+                              {/* Unique Business Owner ID */}
+                              <td className="py-3.5 px-4 font-mono">
+                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200/80 text-blue-900 font-bold text-[11px]">
+                                  <span>{ownerIdDisplay}</span>
+                                  <button
+                                    onClick={() => copyToClipboard(ownerIdDisplay, `bo-${biz.id}`)}
+                                    title="Copy Business Owner ID"
+                                    className="p-0.5 hover:text-blue-600 cursor-pointer"
+                                  >
+                                    {copiedId === `bo-${biz.id}` ? (
+                                      <Check className="w-3 h-3 text-emerald-600" />
+                                    ) : (
+                                      <Copy className="w-3 h-3 text-slate-400" />
+                                    )}
+                                  </button>
+                                </div>
+                              </td>
+
+                              {/* Store / Business Info */}
+                              <td className="py-3.5 px-4">
+                                <div className="font-bold text-slate-900 text-sm">{biz.name}</div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 font-mono text-[10px] text-purple-700 font-bold">
+                                    Store ID: {biz.id}
+                                  </span>
+                                  <span className="text-[10px] text-slate-400">{biz.businessType || 'Retail Store'}</span>
+                                </div>
+                                {biz.address && <div className="text-[10px] text-slate-400 mt-0.5">{biz.address}</div>}
+                              </td>
+
+                              {/* Owner Name & Contact */}
+                              <td className="py-3.5 px-4">
+                                <div className="font-semibold text-slate-900 text-xs">{biz.ownerName}</div>
+                                <div className="text-[11px] text-slate-500">{biz.email}</div>
+                                {biz.phone && <div className="text-[10px] text-slate-400">{biz.phone}</div>}
+                              </td>
+
+                              {/* Catalog & Sales */}
+                              <td className="py-3.5 px-4 text-center">
+                                <span className="font-bold text-slate-800 text-xs block">{bProducts.length} products</span>
+                                <span className="text-[10px] text-emerald-700 font-semibold">
+                                  {formatCurrency(bRev, biz.currencySymbol)} ({bSales.length} orders)
+                                </span>
+                              </td>
+
+                              {/* Status */}
+                              <td className="py-3.5 px-4 text-center">{statusBadge(biz.status || 'active')}</td>
+
+                              {/* Created Date */}
+                              <td className="py-3.5 px-4 text-[11px] text-slate-500 whitespace-nowrap">
+                                {formatDate(biz.createdAt)}
+                              </td>
+
+                              {/* Actions */}
+                              <td className="py-3.5 px-4 text-right pr-6">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {/* Switch to workspace */}
+                                  <button
+                                    onClick={() => onSwitchToBusiness(biz)}
+                                    className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                                    title="Enter Business Store Dashboard"
+                                  >
+                                    <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>Workspace</span>
+                                  </button>
+
+                                  {/* Deactivate / Reactivate Owner */}
+                                  <button
+                                    onClick={() => setBusinessOwnerToDeactivate(biz)}
+                                    className={`px-2.5 py-1.5 rounded-xl font-bold text-xs border transition-colors cursor-pointer shadow-2xs ${
+                                      biz.status === 'active'
+                                        ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                        : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                    }`}
+                                    title={biz.status === 'active' ? 'Deactivate Business Owner' : 'Reactivate Business Owner'}
+                                  >
+                                    {biz.status === 'active' ? 'Deactivate' : 'Activate'}
+                                  </button>
+
+                                  {/* Permanent Delete Business Owner */}
+                                  <button
+                                    onClick={() => setBusinessOwnerToDelete(biz)}
+                                    className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer shadow-2xs hover:border-rose-300"
+                                    title="Permanently Delete Business Owner & Store"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                    <span>Permanent Delete</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ------------------------------------------------------------- */}
+        {/* TAB 2: STORE WORKSPACES                                        */}
+        {/* ------------------------------------------------------------- */}
         {activeAdminTab === 'workspaces' && (
           <div className="space-y-8">
             {/* Platform Overview KPIs */}
@@ -328,16 +1149,16 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
+                <table className="w-full text-left text-xs border-collapse min-w-[1020px]">
                   <thead>
                     <tr className="bg-slate-900 text-slate-200 text-[11px] font-bold uppercase tracking-wider">
                       <th className="py-3.5 px-4">Business / Store</th>
-                      <th className="py-3.5 px-4">Business ID</th>
+                      <th className="py-3.5 px-4">Store ID & Owner ID</th>
                       <th className="py-3.5 px-4">Owner & Contact</th>
                       <th className="py-3.5 px-4 text-center">Products</th>
                       <th className="py-3.5 px-4 text-center">Total Sales</th>
                       <th className="py-3.5 px-4 text-center">Status</th>
-                      <th className="py-3.5 px-4 text-right">Actions</th>
+                      <th className="py-3.5 px-4 text-right pr-6 min-w-[280px]">Actions & Deletion</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -352,7 +1173,10 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                             <span className="font-bold text-slate-900 text-sm block">{biz.name}</span>
                             <span className="text-[11px] text-slate-400">{biz.address || 'Address not set'}</span>
                           </td>
-                          <td className="py-3.5 px-4 font-mono font-bold text-purple-700">{biz.id}</td>
+                          <td className="py-3.5 px-4 font-mono font-bold text-purple-700">
+                            <div>{biz.id}</div>
+                            {biz.ownerId && <div className="text-[10px] text-blue-600 font-normal">Owner: {biz.ownerId}</div>}
+                          </td>
                           <td className="py-3.5 px-4">
                             <span className="font-medium text-slate-900 block">{biz.ownerName}</span>
                             <span className="text-[11px] text-slate-400">{biz.email}</span>
@@ -363,31 +1187,36 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                             <span className="text-[10px] text-slate-400">{bSales.length} orders</span>
                           </td>
                           <td className="py-3.5 px-4 text-center">
-                            <span
-                              className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
-                                biz.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                              }`}
-                            >
-                              {biz.status}
-                            </span>
+                            {statusBadge(biz.status || 'active')}
                           </td>
-                          <td className="py-3.5 px-4 text-right">
+                          <td className="py-3.5 px-4 text-right pr-6">
                             <div className="flex items-center justify-end gap-1.5">
                               <button
                                 onClick={() => onSwitchToBusiness(biz)}
-                                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer"
+                                className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                                title="Enter Business Dashboard"
                               >
-                                <Eye className="w-3.5 h-3.5 text-emerald-400" /> Enter Dashboard
+                                <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>Dashboard</span>
                               </button>
                               <button
-                                onClick={() => handleToggleStatus(biz)}
-                                className={`px-2.5 py-1.5 rounded-lg font-semibold text-xs transition-colors cursor-pointer ${
+                                onClick={() => setBusinessOwnerToDeactivate(biz)}
+                                className={`px-2.5 py-1.5 rounded-xl font-bold text-xs border transition-colors cursor-pointer shadow-2xs ${
                                   biz.status === 'active'
-                                    ? 'bg-rose-50 text-rose-600 hover:bg-rose-100'
-                                    : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                    ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                    : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                                 }`}
+                                title={biz.status === 'active' ? 'Suspend Store Operations' : 'Activate Store'}
                               >
                                 {biz.status === 'active' ? 'Suspend' : 'Activate'}
+                              </button>
+                              <button
+                                onClick={() => setBusinessOwnerToDelete(biz)}
+                                className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer shadow-2xs hover:border-rose-300"
+                                title="Permanently Delete Store Workspace & All Data"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                <span>Permanent Delete</span>
                               </button>
                             </div>
                           </td>
@@ -401,7 +1230,9 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           </div>
         )}
 
-        {/* TAB: Multi-Vendor Marketplace Orders (Super Admin Global View) */}
+        {/* ------------------------------------------------------------- */}
+        {/* TAB 3: MARKETPLACE ORDERS                                     */}
+        {/* ------------------------------------------------------------- */}
         {activeAdminTab === 'orders' && (
           <div className="space-y-6">
             {/* Global Marketplace Order Stats */}
@@ -448,40 +1279,58 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   <span className="text-xs font-semibold text-slate-500 block">Marketplace GMV</span>
                   <span className="text-3xl font-black text-emerald-700 mt-1 block">
                     {formatCurrency(
-                      orders
-                        .filter((o) => o.orderStatus !== 'Cancelled')
-                        .reduce((acc, o) => acc + o.totalAmount, 0)
+                      orders.filter((o) => o.orderStatus !== 'Cancelled').reduce((acc, o) => acc + o.totalAmount, 0)
                     )}
                   </span>
-                  <span className="text-[11px] text-slate-500 font-medium">Gross Marketplace Value</span>
+                  <span className="text-[11px] text-slate-500 font-medium">Gross Merchandise Value</span>
                 </div>
-                <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
                   <DollarSign className="w-6 h-6" />
                 </div>
               </div>
             </div>
 
-            {/* Filter & Search Bar */}
-            <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-xs space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                <div className="relative sm:col-span-6">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    placeholder="Search by Order ID, customer name, phone, address..."
-                    value={orderSearchQuery}
-                    onChange={(e) => setOrderSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-amber-500"
-                  />
+            {/* Orders List Table */}
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-black text-slate-900">All Marketplace Orders</h2>
+                  <p className="text-xs text-slate-500">Live feed of all customer orders placed across all independent supermarket storefronts.</p>
                 </div>
 
-                <div className="sm:col-span-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search order #, customer, phone..."
+                      value={orderSearchQuery}
+                      onChange={(e) => setOrderSearchQuery(e.target.value)}
+                      className="pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-purple-500 w-52"
+                    />
+                  </div>
+
+                  <select
+                    value={orderStatusFilter}
+                    onChange={(e) => setOrderStatusFilter(e.target.value)}
+                    className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700"
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Confirmed">Confirmed</option>
+                    <option value="Processing">Processing</option>
+                    <option value="Ready">Ready</option>
+                    <option value="Out for Delivery">Out for Delivery</option>
+                    <option value="Delivered">Delivered</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </select>
+
                   <select
                     value={orderBusinessFilter}
                     onChange={(e) => setOrderBusinessFilter(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-amber-500"
+                    className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700"
                   >
-                    <option value="ALL">All Stores ({businesses.length})</option>
+                    <option value="ALL">All Stores</option>
                     {businesses.map((b) => (
                       <option key={b.id} value={b.id}>
                         {b.name}
@@ -489,494 +1338,255 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                     ))}
                   </select>
                 </div>
-
-                <div className="sm:col-span-3">
-                  <select
-                    value={orderStatusFilter}
-                    onChange={(e) => setOrderStatusFilter(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-amber-500"
-                  >
-                    <option value="ALL">All Statuses</option>
-                    <option value="Pending">Pending</option>
-                    <option value="Confirmed">Confirmed</option>
-                    <option value="Packed">Packed</option>
-                    <option value="Ready">Ready for Delivery</option>
-                    <option value="In Transit">In Transit</option>
-                    <option value="Delivered">Delivered</option>
-                    <option value="Cancelled">Cancelled</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Orders Table */}
-            <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-              <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-extrabold text-slate-900">All Marketplace Orders</h2>
-                  <p className="text-xs text-slate-500">Live platform customer orders across all vendor shops.</p>
-                </div>
-                <span className="text-xs text-slate-400 font-bold">{orders.length} total records</span>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
-                      <th className="p-4">Order ID & Date</th>
-                      <th className="p-4">Store / Business</th>
-                      <th className="p-4">Customer & Phone</th>
-                      <th className="p-4">Items & Details</th>
-                      <th className="p-4">Total Amount</th>
-                      <th className="p-4">Payment</th>
-                      <th className="p-4">Order Status</th>
-                      <th className="p-4 text-right">Actions</th>
+                    <tr className="bg-slate-900 text-slate-200 text-[11px] font-bold uppercase tracking-wider">
+                      <th className="py-3.5 px-4">Order Ref #</th>
+                      <th className="py-3.5 px-4">Supermarket Store</th>
+                      <th className="py-3.5 px-4">Customer Details</th>
+                      <th className="py-3.5 px-4">Items / Total</th>
+                      <th className="py-3.5 px-4 text-center">Status</th>
+                      <th className="py-3.5 px-4">Date</th>
+                      <th className="py-3.5 px-4 text-right">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
                     {orders
                       .filter((o) => {
-                        if (orderBusinessFilter !== 'ALL' && o.businessId !== orderBusinessFilter) return false;
-                        if (orderStatusFilter !== 'ALL' && o.orderStatus !== orderStatusFilter) return false;
-                        if (orderSearchQuery.trim()) {
-                          const q = orderSearchQuery.toLowerCase();
-                          const matchId = o.id.toLowerCase().includes(q);
-                          const matchCust = o.customerName.toLowerCase().includes(q);
-                          const matchPhone = o.customerPhone.toLowerCase().includes(q);
-                          const matchStore = (o.businessNameSnapshot || '').toLowerCase().includes(q);
-                          const matchAddr = o.deliveryAddress.toLowerCase().includes(q);
-                          if (!matchId && !matchCust && !matchPhone && !matchStore && !matchAddr) return false;
-                        }
-                        return true;
+                        const q = orderSearchQuery.toLowerCase();
+                        const orderNum = o.orderId || o.id;
+                        const storeName = o.storeNameSnapshot || o.businessNameSnapshot || '';
+                        const matchesSearch =
+                          !q ||
+                          orderNum.toLowerCase().includes(q) ||
+                          o.customerName.toLowerCase().includes(q) ||
+                          o.customerPhone.toLowerCase().includes(q) ||
+                          storeName.toLowerCase().includes(q);
+                        const matchesStatus = orderStatusFilter === 'ALL' || o.orderStatus === orderStatusFilter;
+                        const matchesBiz = orderBusinessFilter === 'ALL' || (o.storeId === orderBusinessFilter || o.businessId === orderBusinessFilter);
+                        return matchesSearch && matchesStatus && matchesBiz;
                       })
-                      .map((order) => {
-                        const statusColors: Record<string, string> = {
-                          Pending: 'bg-amber-100 text-amber-800 border-amber-200',
-                          Confirmed: 'bg-blue-100 text-blue-800 border-blue-200',
-                          Packed: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-                          Ready: 'bg-purple-100 text-purple-800 border-purple-200',
-                          'In Transit': 'bg-cyan-100 text-cyan-800 border-cyan-200',
-                          Delivered: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-                          Cancelled: 'bg-rose-100 text-rose-800 border-rose-200',
-                        };
-
-                        return (
-                          <tr key={order.id} className="hover:bg-slate-50/80 transition-colors">
-                            <td className="p-4">
-                              <span className="font-mono font-bold text-slate-900 block">{order.id}</span>
-                              <span className="text-[10px] text-slate-400">{formatDate(order.createdAt)}</span>
-                            </td>
-                            <td className="p-4">
-                              <div className="font-bold text-slate-900 flex items-center gap-1">
-                                <Building2 className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                                <span>{order.businessNameSnapshot || order.businessId}</span>
-                              </div>
-                              <span className="text-[10px] text-slate-400 block">{order.businessId}</span>
-                            </td>
-                            <td className="p-4">
-                              <span className="font-bold text-slate-900 block">{order.customerName}</span>
-                              <span className="text-[11px] text-slate-500 font-mono flex items-center gap-1">
-                                <Phone className="w-3 h-3 text-slate-400" />
-                                {order.customerPhone}
-                              </span>
-                            </td>
-                            <td className="p-4">
-                              <span className="text-slate-800 font-bold block">{order.items.length} items</span>
-                              <span className="text-[10px] text-slate-400 truncate max-w-xs block">
-                                {order.items.map((i) => `${i.productNameSnapshot} (x${i.quantity})`).join(', ')}
-                              </span>
-                            </td>
-                            <td className="p-4">
-                              <span className="font-black text-slate-900 text-sm">
-                                {formatCurrency(order.totalAmount)}
-                              </span>
-                            </td>
-                            <td className="p-4">
-                              <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 text-[10px] font-bold uppercase">
-                                {order.paymentMethod}
-                              </span>
-                              <span className={`block text-[10px] font-semibold mt-0.5 ${order.paymentStatus === 'paid' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                                {order.paymentStatus}
-                              </span>
-                            </td>
-                            <td className="p-4">
-                              <span
-                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                                  statusColors[order.orderStatus] || 'bg-slate-100 text-slate-800'
-                                }`}
-                              >
-                                {order.orderStatus}
-                              </span>
-                            </td>
-                            <td className="p-4 text-right">
-                              <button
-                                onClick={() => setInspectOrder(order)}
-                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer"
-                              >
-                                <Eye className="w-3.5 h-3.5" /> Inspect
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      .map((o) => (
+                        <tr key={o.id} className="hover:bg-slate-50">
+                          <td className="py-3.5 px-4 font-mono font-bold text-purple-700">
+                            {o.orderId || o.id}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="font-bold text-slate-900 block">{o.storeNameSnapshot || o.businessNameSnapshot || 'Supermarket'}</span>
+                            <span className="text-[10px] text-slate-400 font-mono">ID: {o.storeId || o.businessId}</span>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="font-bold text-slate-900 block">{o.customerName}</span>
+                            <span className="text-[11px] text-slate-500">{o.customerPhone}</span>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="font-bold text-emerald-700 block text-sm">{formatCurrency(o.totalAmount)}</span>
+                            <span className="text-[10px] text-slate-500">{o.items?.length || 0} line items</span>
+                          </td>
+                          <td className="py-3.5 px-4 text-center">
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-slate-100 text-slate-800">
+                              {o.orderStatus}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-500">{formatDate(o.createdAt)}</td>
+                          <td className="py-3.5 px-4 text-right">
+                            <button
+                              onClick={() => setInspectOrder(o)}
+                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs transition-colors cursor-pointer"
+                            >
+                              Inspect
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>
             </div>
-
-            {/* Super Admin Inspect Order Modal */}
-            {inspectOrder && (
-              <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-                <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-5 my-8 animate-in fade-in zoom-in-95 duration-150">
-                  <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-lg font-black text-slate-900">Order #{inspectOrder.id}</h3>
-                        <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 text-xs font-bold">
-                          {inspectOrder.orderStatus}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-400">Placed on {formatDate(inspectOrder.createdAt)}</p>
-                    </div>
-                    <button
-                      onClick={() => setInspectOrder(null)}
-                      className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 cursor-pointer"
-                    >
-                      <XCircle className="w-5 h-5" />
-                    </button>
-                  </div>
-
-                  {/* Merchant & Customer summary */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs">
-                    <div>
-                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Fulfilling Merchant</span>
-                      <strong className="text-slate-900 text-sm block">{inspectOrder.businessNameSnapshot}</strong>
-                      <span className="text-slate-500">ID: {inspectOrder.businessId}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Customer & Shipping</span>
-                      <strong className="text-slate-900 block">{inspectOrder.customerName}</strong>
-                      <span className="text-slate-600 block">📞 {inspectOrder.customerPhone}</span>
-                      <span className="text-slate-600 block">📍 {inspectOrder.deliveryAddress}</span>
-                    </div>
-                  </div>
-
-                  {/* Items snapshot table */}
-                  <div className="space-y-2">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Items (Snapshot)</h4>
-                    <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden">
-                      {inspectOrder.items.map((item, idx) => (
-                        <div key={idx} className="p-3.5 flex items-center justify-between text-xs bg-white">
-                          <div>
-                            <span className="font-bold text-slate-900 block">{item.productNameSnapshot}</span>
-                            <span className="text-slate-400 text-[11px]">
-                              {formatCurrency(item.unitPriceSnapshot)} × {item.quantity} {item.unitSnapshot}
-                            </span>
-                          </div>
-                          <span className="font-extrabold text-slate-900">{formatCurrency(item.subtotal)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-slate-900 text-white rounded-2xl flex items-center justify-between">
-                    <div>
-                      <span className="text-xs text-slate-400 block">Grand Total</span>
-                      <span className="text-2xl font-black text-emerald-400">{formatCurrency(inspectOrder.totalAmount)}</span>
-                    </div>
-                    <div className="text-right text-xs">
-                      <span className="text-slate-400 block">Payment Method</span>
-                      <span className="font-bold text-white uppercase">{inspectOrder.paymentMethod} • {inspectOrder.paymentStatus}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end pt-2">
-                    <button
-                      onClick={() => setInspectOrder(null)}
-                      className="px-5 py-2.5 bg-slate-900 text-white font-bold text-xs rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
-                    >
-                      Close Window
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
-        {/* TAB 2: Support Contact Settings (Admin Configuration) */}
-        {activeAdminTab === 'support_settings' && (
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 sm:p-8 max-w-3xl mx-auto space-y-6">
-            <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                <Settings className="w-6 h-6" />
-              </div>
-              <div>
-                <h2 className="text-xl font-extrabold text-slate-900">Admin Support Settings</h2>
-                <p className="text-xs text-slate-500">
-                  Configure real WhatsApp, Messenger, Gmail, and phone contact info displayed to all users.
-                </p>
-              </div>
-            </div>
-
-            {isSettingsSaved && (
-              <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs rounded-2xl flex items-center gap-2.5 font-bold animate-in fade-in duration-200">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                <span>Support contact information updated successfully! All users will now see these new links.</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSaveSupportSettings} className="space-y-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                {/* WhatsApp Number */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
-                    <MessageCircle className="w-4 h-4 text-emerald-600" />
-                    <span>WhatsApp Contact Number</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={supportSettings.whatsappNumber}
-                    onChange={(e) =>
-                      setSupportSettings({ ...supportSettings, whatsappNumber: e.target.value })
-                    }
-                    placeholder="e.g. +8801700000000"
-                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 bg-slate-50 font-mono font-semibold"
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1">Include country code (e.g. +88017...)</p>
-                </div>
-
-                {/* Facebook Messenger URL */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
-                    <MessageCircle className="w-4 h-4 text-blue-600" />
-                    <span>Facebook Messenger URL</span>
-                  </label>
-                  <input
-                    type="url"
-                    required
-                    value={supportSettings.facebookMessengerUrl}
-                    onChange={(e) =>
-                      setSupportSettings({ ...supportSettings, facebookMessengerUrl: e.target.value })
-                    }
-                    placeholder="e.g. https://m.me/smartproductmanager"
-                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 bg-slate-50 font-mono"
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1">Messenger direct link (https://m.me/...)</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                {/* Support Email */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
-                    <Mail className="w-4 h-4 text-rose-500" />
-                    <span>Support Gmail / Email Address</span>
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={supportSettings.supportEmail}
-                    onChange={(e) =>
-                      setSupportSettings({ ...supportSettings, supportEmail: e.target.value })
-                    }
-                    placeholder="e.g. support.spm@gmail.com"
-                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 bg-slate-50 font-mono"
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1">Target email for support mailto buttons</p>
-                </div>
-
-                {/* Support Phone Number */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
-                    <Phone className="w-4 h-4 text-slate-700" />
-                    <span>Support Phone Hotline</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={supportSettings.supportPhone}
-                    onChange={(e) =>
-                      setSupportSettings({ ...supportSettings, supportPhone: e.target.value })
-                    }
-                    placeholder="e.g. +880 1700-000000"
-                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 bg-slate-50 font-mono font-semibold"
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1">Direct call hotline for immediate help</p>
-                </div>
-              </div>
-
-              {/* WhatsApp Preset Message */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  WhatsApp Default Preset Message
-                </label>
-                <input
-                  type="text"
-                  value={supportSettings.whatsappPresetMessage || ''}
-                  onChange={(e) =>
-                    setSupportSettings({ ...supportSettings, whatsappPresetMessage: e.target.value })
-                  }
-                  placeholder="e.g. Hello Smart Product Manager Support, I need assistance with "
-                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 bg-slate-50"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Text automatically pre-filled when a user clicks the WhatsApp support button.
-                </p>
-              </div>
-
-              <div className="pt-4 flex justify-end">
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
-                >
-                  <Save className="w-4 h-4" /> Save Support Contact Settings
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* TAB 3: Support Tickets & Problem Reports */}
+        {/* ------------------------------------------------------------- */}
+        {/* TAB 4: SUPPORT TICKETS                                        */}
+        {/* ------------------------------------------------------------- */}
         {activeAdminTab === 'support_tickets' && (
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-extrabold text-slate-900">Submitted Support Tickets & Reports</h2>
-                <p className="text-xs text-slate-500">
-                  Problem reports submitted by business owners and platform users.
-                </p>
-              </div>
+          <div className="space-y-6">
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                <div>
+                  <h2 className="text-lg font-black text-slate-900">Merchant & Store Support Inquiries</h2>
+                  <p className="text-xs text-slate-500">Live tickets submitted by supermarket owners and staff seeking technical help.</p>
+                </div>
 
-              {/* Status Filters */}
-              <div className="flex items-center gap-2">
-                {(['all', 'open', 'in_progress', 'resolved'] as const).map((st) => (
-                  <button
-                    key={st}
-                    onClick={() => setTicketFilter(st)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold capitalize transition-colors cursor-pointer ${
-                      ticketFilter === st
-                        ? 'bg-slate-900 text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-500">Filter:</span>
+                  <select
+                    value={ticketFilter}
+                    onChange={(e: any) => setTicketFilter(e.target.value)}
+                    className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-purple-500"
                   >
-                    {st === 'in_progress' ? 'In Progress' : st}
-                  </button>
-                ))}
+                    <option value="all">All Tickets ({tickets.length})</option>
+                    <option value="open">Open ({tickets.filter((t) => t.status === 'open').length})</option>
+                    <option value="in_progress">In Progress ({tickets.filter((t) => t.status === 'in_progress').length})</option>
+                    <option value="resolved">Resolved ({tickets.filter((t) => t.status === 'resolved').length})</option>
+                  </select>
+                </div>
               </div>
-            </div>
 
-            {filteredTickets.length === 0 ? (
-              <div className="p-12 text-center space-y-3 text-slate-400">
-                <LifeBuoy className="w-12 h-12 mx-auto text-slate-300" />
-                <p className="text-sm font-bold text-slate-600">No support tickets found</p>
-                <p className="text-xs text-slate-400">No support requests match the selected filter.</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100 text-xs">
-                {filteredTickets.map((ticket) => (
-                  <div key={ticket.id} className="p-5 hover:bg-slate-50/80 transition-colors space-y-3">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div className="flex items-center gap-2.5">
-                        <span className="font-mono font-bold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-200">
-                          #{ticket.id}
-                        </span>
-                        <span className="font-bold text-slate-900 text-sm">{ticket.category}</span>
-                        <span className="text-[11px] text-slate-400">• {formatDate(ticket.createdAt)}</span>
+              <div className="space-y-3">
+                {filteredTickets.length === 0 ? (
+                  <div className="py-12 text-center text-slate-400">
+                    <Headphones className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                    <p className="text-xs font-semibold">No support tickets match the current filter.</p>
+                  </div>
+                ) : (
+                  filteredTickets.map((ticket) => (
+                    <div
+                      key={ticket.id}
+                      className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-bold text-purple-700 bg-purple-100/70 px-2 py-0.5 rounded-md">
+                            {ticket.id}
+                          </span>
+                          <span className="font-bold text-slate-900 text-sm">{ticket.category}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                              ticket.status === 'open'
+                                ? 'bg-amber-100 text-amber-800'
+                                : ticket.status === 'in_progress'
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-emerald-100 text-emerald-800'
+                            }`}
+                          >
+                            {ticket.status.replace('_', ' ')}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-700 leading-relaxed max-w-2xl">{ticket.description}</p>
+                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400 pt-1">
+                          <span className="font-semibold text-slate-600">{ticket.userName}</span>
+                          <span>•</span>
+                          <span>{ticket.businessName}</span>
+                          <span>•</span>
+                          <a href={`mailto:${ticket.email}`} className="text-purple-600 hover:underline">
+                            {ticket.email}
+                          </a>
+                          <span>•</span>
+                          <span>{formatDate(ticket.createdAt)}</span>
+                        </div>
                       </div>
 
-                      {/* Status selector */}
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-semibold text-slate-400">Status:</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {ticket.screenshotUrl && (
+                          <button
+                            onClick={() => setSelectedScreenshot(ticket.screenshotUrl || null)}
+                            className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-purple-600" /> Screenshot
+                          </button>
+                        )}
+
                         <select
                           value={ticket.status}
-                          onChange={(e) =>
-                            handleTicketStatusChange(
-                              ticket.id,
-                              e.target.value as 'open' | 'in_progress' | 'resolved'
-                            )
-                          }
-                          className={`px-2.5 py-1 rounded-lg text-xs font-bold focus:outline-none border cursor-pointer ${
-                            ticket.status === 'open'
-                              ? 'bg-amber-50 text-amber-800 border-amber-300'
-                              : ticket.status === 'in_progress'
-                              ? 'bg-blue-50 text-blue-800 border-blue-300'
-                              : 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                          }`}
+                          onChange={(e: any) => handleTicketStatusChange(ticket.id, e.target.value)}
+                          className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-purple-500 cursor-pointer"
                         >
-                          <option value="open">Open (Unresolved)</option>
+                          <option value="open">Open</option>
                           <option value="in_progress">In Progress</option>
                           <option value="resolved">Resolved</option>
                         </select>
                       </div>
                     </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                          Submitted By
-                        </span>
-                        <span className="font-bold text-slate-900 block mt-0.5">{ticket.userName}</span>
-                        <span className="text-slate-500 text-[11px] font-mono">{ticket.email}</span>
-                      </div>
-
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                          Business / Workspace
-                        </span>
-                        <span className="font-bold text-slate-800 block mt-0.5">{ticket.businessName}</span>
-                        {ticket.businessId && (
-                          <span className="text-[10px] text-purple-600 font-mono">ID: {ticket.businessId}</span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center justify-end gap-2">
-                        <a
-                          href={`https://wa.me/${supportSettings.whatsappNumber.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                            `Hello ${ticket.userName}, regarding your support ticket #${ticket.id} (${ticket.category})...`
-                          )}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1.5 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold text-[11px] flex items-center gap-1 transition-colors"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
-                        </a>
-
-                        <a
-                          href={`mailto:${ticket.email}?subject=${encodeURIComponent(
-                            `[SPM Support Reply] Ticket #${ticket.id} - ${ticket.category}`
-                          )}`}
-                          className="px-3 py-1.5 rounded-xl bg-blue-100 hover:bg-blue-200 text-blue-800 font-bold text-[11px] flex items-center gap-1 transition-colors"
-                        >
-                          <Mail className="w-3.5 h-3.5" /> Email
-                        </a>
-                      </div>
-                    </div>
-
-                    {/* Problem Description */}
-                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 text-slate-700 leading-relaxed whitespace-pre-wrap">
-                      <span className="font-bold text-slate-900 block mb-1 text-[11px]">Problem Description:</span>
-                      {ticket.description}
-                    </div>
-
-                    {/* Screenshot attachment preview */}
-                    {ticket.screenshotUrl && (
-                      <div className="flex items-center gap-2 pt-1">
-                        <span className="text-xs font-bold text-slate-500">Attachment:</span>
-                        <button
-                          onClick={() => setSelectedScreenshot(ticket.screenshotUrl!)}
-                          className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold border border-slate-300 transition-colors cursor-pointer"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-emerald-600" /> View Uploaded Screenshot
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
-            )}
+            </div>
           </div>
+        )}
+
+        {/* ------------------------------------------------------------- */}
+        {/* TAB 5: SUPPORT SETTINGS                                       */}
+        {/* ------------------------------------------------------------- */}
+        {activeAdminTab === 'support_settings' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-6 max-w-2xl">
+              <div>
+                <h2 className="text-lg font-black text-slate-900">Platform Support Channel Settings</h2>
+                <p className="text-xs text-slate-500">Configure real contact points presented to merchants across the platform.</p>
+              </div>
+
+              <form onSubmit={handleSaveSupportSettings} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">WhatsApp Business Number</label>
+                  <input
+                    type="text"
+                    required
+                    value={supportSettings.whatsappNumber}
+                    onChange={(e) => setSupportSettings({ ...supportSettings, whatsappNumber: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Official Support Email</label>
+                  <input
+                    type="email"
+                    required
+                    value={supportSettings.supportEmail}
+                    onChange={(e) => setSupportSettings({ ...supportSettings, supportEmail: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Direct Support Hotline Phone</label>
+                  <input
+                    type="text"
+                    required
+                    value={supportSettings.supportPhone}
+                    onChange={(e) => setSupportSettings({ ...supportSettings, supportPhone: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Facebook Messenger URL</label>
+                  <input
+                    type="url"
+                    required
+                    value={supportSettings.facebookMessengerUrl}
+                    onChange={(e) => setSupportSettings({ ...supportSettings, facebookMessengerUrl: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div className="pt-2 flex items-center gap-3">
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Save className="w-4 h-4" /> Save Support Configuration
+                  </button>
+                  {isSettingsSaved && (
+                    <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+                      <Check className="w-4 h-4" /> Settings updated successfully!
+                    </span>
+                  )}
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ------------------------------------------------------------- */}
+        {/* TAB 6: SMTP DIAGNOSTICS                                       */}
+        {/* ------------------------------------------------------------- */}
+        {activeAdminTab === 'smtp_diagnostics' && (
+          <SmtpDiagnosticPanel currentUser={currentUser} />
         )}
 
         {/* Global Security Audit Log */}
@@ -984,7 +1594,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div className="flex items-center space-x-2">
               <Activity className="w-5 h-5 text-purple-600" />
-              <h3 className="text-base font-extrabold text-slate-900">Platform Security & Audit Log</h3>
+              <h3 className="text-base font-extrabold text-slate-900">Platform Security & Governance Audit Log</h3>
             </div>
             <span className="text-xs text-slate-400">{logs.length} logged events</span>
           </div>
@@ -995,7 +1605,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                 <div>
                   <span className="font-bold text-slate-900 uppercase">[{log.action}]</span>{' '}
                   <span className="text-slate-600">{log.details}</span>{' '}
-                  <span className="text-purple-700 font-semibold">(Tenant: {log.businessId || 'N/A'})</span>
+                  {log.businessId && <span className="text-purple-700 font-semibold">(Tenant: {log.businessId})</span>}
                 </div>
                 <span className="text-[10px] text-slate-400 shrink-0 ml-2">{formatDate(log.timestamp || log.createdAt || '')}</span>
               </div>
@@ -1004,7 +1614,344 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         </div>
       </main>
 
-      {/* Provision Business Modal */}
+      {/* ------------------------------------------------------------------- */}
+      {/* MODAL 1: CONFIRM PERMANENT DELETE USER ACCOUNT                      */}
+      {/* ------------------------------------------------------------------- */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-rose-200 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="inline-block px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 font-extrabold text-[10px] tracking-wider uppercase mb-1">
+                  Permanent Delete Option
+                </span>
+                <h3 className="text-lg font-black text-slate-900 leading-tight">Permanently Delete User?</h3>
+              </div>
+            </div>
+
+            <p className="text-xs text-rose-600 font-semibold mb-4 leading-relaxed">
+              Warning: This action will permanently remove the user record from both the cloud database and system cache. The user will immediately lose all access.
+            </p>
+
+            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 mb-4 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500">User Name:</span>
+                <span className="font-bold text-slate-900">{userToDelete.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Email Address:</span>
+                <span className="font-mono text-slate-800">{userToDelete.email}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Unique User ID:</span>
+                <span className="font-mono font-bold text-purple-700">{userToDelete.id}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Assigned Role:</span>
+                <span className="font-bold text-slate-800 uppercase">{userToDelete.role}</span>
+              </div>
+              {userToDelete.businessId && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Store Workspace:</span>
+                  <span className="font-mono font-bold text-blue-700">{userToDelete.businessId}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Optional Cascade Store Deletion if User is associated with a business */}
+            {userToDelete.businessId && (
+              <label className="flex items-start gap-2.5 p-3 rounded-2xl bg-amber-50/80 border border-amber-200 text-amber-900 text-xs font-semibold cursor-pointer mb-4">
+                <input
+                  type="checkbox"
+                  checked={alsoDeleteAssociatedStore}
+                  onChange={(e) => setAlsoDeleteAssociatedStore(e.target.checked)}
+                  className="mt-0.5 rounded text-rose-600 focus:ring-rose-500"
+                />
+                <span>
+                  Also permanently purge associated store workspace ({userToDelete.businessId}) and wipe all inventory, orders, and sales data.
+                </span>
+              </label>
+            )}
+
+            {actionError && (
+              <div className="p-3 mb-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+                {actionError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={() => setUserToDelete(null)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={handleConfirmDeleteUser}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isProcessing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                Yes, Permanently Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------- */}
+      {/* MODAL 2: CONFIRM PERMANENT DELETE BUSINESS OWNER & WORKSPACE        */}
+      {/* ------------------------------------------------------------------- */}
+      {businessOwnerToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-rose-200 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertOctagon className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="inline-block px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 font-extrabold text-[10px] tracking-wider uppercase mb-1">
+                  Permanent Delete Option
+                </span>
+                <h3 className="text-lg font-black text-slate-900 leading-tight">Delete Business Owner & Store?</h3>
+              </div>
+            </div>
+
+            <p className="text-xs text-rose-600 font-semibold mb-4 leading-relaxed">
+              Caution: Permanently deleting this Business Owner will erase the entire supermarket workspace, including product catalog, sales ledgers, inventory records, and customer orders.
+            </p>
+
+            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 mb-5 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Business / Store:</span>
+                <span className="font-bold text-slate-900">{businessOwnerToDelete.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Store ID:</span>
+                <span className="font-mono font-bold text-purple-700">{businessOwnerToDelete.id}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Owner Name:</span>
+                <span className="font-bold text-slate-800">{businessOwnerToDelete.ownerName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Owner ID:</span>
+                <span className="font-mono text-blue-700 font-bold">{businessOwnerToDelete.ownerId || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Email:</span>
+                <span className="font-mono text-slate-700">{businessOwnerToDelete.email}</span>
+              </div>
+            </div>
+
+            {actionError && (
+              <div className="p-3 mb-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+                {actionError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={() => setBusinessOwnerToDelete(null)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={handleConfirmDeleteBusinessOwner}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isProcessing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                Yes, Permanently Purge
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------- */}
+      {/* MODAL 3: CONFIRM DEACTIVATE / REACTIVATE BUSINESS OWNER            */}
+      {/* ------------------------------------------------------------------- */}
+      {businessOwnerToDeactivate && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 ${
+              businessOwnerToDeactivate.status === 'active' ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'
+            }`}>
+              {businessOwnerToDeactivate.status === 'active' ? <UserX className="w-6 h-6" /> : <UserCheck className="w-6 h-6" />}
+            </div>
+
+            <h3 className="text-lg font-black text-slate-900 mb-1">
+              {businessOwnerToDeactivate.status === 'active' ? 'Deactivate Business Owner?' : 'Reactivate Business Owner?'}
+            </h3>
+            <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+              {businessOwnerToDeactivate.status === 'active'
+                ? 'Deactivating this Business Owner will suspend login capabilities and temporarily disable store operations.'
+                : 'Reactivating this Business Owner will restore full access and store operations immediately.'}
+            </p>
+
+            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 mb-5 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Store Name:</span>
+                <span className="font-bold text-slate-900">{businessOwnerToDeactivate.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Owner Name:</span>
+                <span className="font-bold text-slate-800">{businessOwnerToDeactivate.ownerName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Current Status:</span>
+                <span className="font-bold uppercase">{businessOwnerToDeactivate.status}</span>
+              </div>
+            </div>
+
+            {actionError && (
+              <div className="p-3 mb-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+                {actionError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={() => setBusinessOwnerToDeactivate(null)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={handleConfirmDeactivateBusinessOwner}
+                className={`px-5 py-2.5 font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                  businessOwnerToDeactivate.status === 'active'
+                    ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                }`}
+              >
+                {isProcessing ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <span>Yes, {businessOwnerToDeactivate.status === 'active' ? 'Deactivate Account' : 'Reactivate Account'}</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------- */}
+      {/* MODAL 4: ADD NEW USER BY SUPER ADMIN                               */}
+      {/* ------------------------------------------------------------------- */}
+      {isAddUserOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
+            <h3 className="text-lg font-black text-slate-900 mb-1">Create Platform User</h3>
+            <p className="text-xs text-slate-500 mb-4">Register a user and configure role and store permissions.</p>
+
+            <form onSubmit={handleCreateUser} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Alex Morgan"
+                  value={newUserName}
+                  onChange={(e) => setNewUserName(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Email Address *</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="alex@example.com"
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Role Assignment *</label>
+                <select
+                  value={newUserRole}
+                  onChange={(e) => setNewUserRole(e.target.value as UserRole)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                >
+                  <option value="staff">Staff Member</option>
+                  <option value="cashier">Cashier / POS Operator</option>
+                  <option value="manager">Store Manager</option>
+                  <option value="business_owner">Business Owner</option>
+                  <option value="super_admin">Super Administrator</option>
+                </select>
+              </div>
+
+              {newUserRole !== 'super_admin' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Assign to Store Workspace</label>
+                  <select
+                    value={newUserBusinessId}
+                    onChange={(e) => setNewUserBusinessId(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                  >
+                    <option value="">Select a store...</option>
+                    {businesses.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name} ({b.id})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Phone Number (Optional)</label>
+                <input
+                  type="tel"
+                  placeholder="+880 1700-000000"
+                  value={newUserPhone}
+                  onChange={(e) => setNewUserPhone(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="pt-3 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddUserOpen(false)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 font-semibold text-xs rounded-xl cursor-pointer hover:bg-slate-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs rounded-xl shadow-md cursor-pointer"
+                >
+                  Create User
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------- */}
+      {/* MODAL 5: PROVISION NEW BUSINESS                                    */}
+      {/* ------------------------------------------------------------------- */}
       {isAddOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
@@ -1052,7 +1999,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   <label className="block text-xs font-bold text-slate-700 mb-1">Phone</label>
                   <input
                     type="tel"
-                    placeholder="+1 (555) 123-4567"
+                    placeholder="+880 1711-000000"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-purple-500"
@@ -1095,7 +2042,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           <div className="relative max-w-4xl w-full bg-white rounded-2xl p-4 overflow-hidden shadow-2xl">
             <button
               onClick={() => setSelectedScreenshot(null)}
-              className="absolute top-3 right-3 p-2 bg-slate-900 text-white rounded-full hover:bg-slate-800 transition-colors"
+              className="absolute top-3 right-3 p-2 bg-slate-900 text-white rounded-full hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <XCircle className="w-6 h-6" />
             </button>

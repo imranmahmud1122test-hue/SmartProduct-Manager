@@ -16,17 +16,20 @@ import {
   Eye,
   EyeOff,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  ShieldCheck
 } from 'lucide-react';
 import { db } from '../../services/storage';
 import { User, Business } from '../../types';
 import { Logo } from '../common/Logo';
+import { isGmailAddress, getGmailValidationMessage } from '../../utils/gmailValidation';
 
 interface RegisterBusinessModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (business: Business, user: User) => void;
   onSwitchToLogin: () => void;
+  onRequireGmailVerification?: (email: string) => void;
 }
 
 export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
@@ -34,6 +37,7 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
   onClose,
   onSuccess,
   onSwitchToLogin,
+  onRequireGmailVerification,
 }) => {
   const [ownerName, setOwnerName] = useState('');
   const [businessName, setBusinessName] = useState('');
@@ -63,11 +67,7 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
 
   if (!isOpen) return null;
 
-  const validateEmail = (val: string) => {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim());
-  };
-
-  const isEmailValid = email.trim().length > 0 && validateEmail(email);
+  const isEmailValidGmail = email.trim().length > 0 && isGmailAddress(email);
   const isPasswordLengthValid = password.length >= 6;
   const isPasswordMatching = password.length > 0 && password === confirmPassword;
 
@@ -116,8 +116,8 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
       setError('Please enter your Supermarket or Business Name.');
       return;
     }
-    if (!cleanEmail || !validateEmail(cleanEmail)) {
-      setError('Please enter a valid email address (e.g., owner@mart.com).');
+    if (!cleanEmail || !isGmailAddress(cleanEmail)) {
+      setError(getGmailValidationMessage(cleanEmail) || 'First-time registration requires a valid Gmail address (@gmail.com).');
       return;
     }
     if (password.length < 6) {
@@ -131,34 +131,48 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
 
     const existing = db.findUserByEmail(cleanEmail);
     if (existing) {
-      setError('An account with this email address already exists. Please log in instead.');
+      if (existing.status === 'pending' || existing.emailVerified === false) {
+        // Account exists but is unverified - route directly to verification
+        onClose();
+        if (onRequireGmailVerification) {
+          onRequireGmailVerification(cleanEmail);
+        }
+        return;
+      }
+      setError('An account with this Gmail address already exists and is active. Please sign in instead.');
       return;
     }
 
     setIsLoading(true);
-    setLoadingStep('Allocating isolated tenant partition...');
+    setLoadingStep('Generating secure workspace partition...');
 
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    setLoadingStep('Initializing POS cash register & barcode schema...');
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    setLoadingStep('Dispatching Gmail 6-digit verification code...');
+    await new Promise((resolve) => setTimeout(resolve, 350));
 
     try {
-      const { user, business } = db.registerBusiness({
+      const { user, business } = await db.registerBusiness({
         ownerName: ownerName.trim(),
         businessName: businessName.trim(),
         email: cleanEmail,
         password: password.trim(),
-        phone: phone.trim() || '+880 1700-000000',
+        phone: phone.trim() || undefined,
         address: address.trim() || 'Dhaka, Bangladesh',
         businessType,
         currencySymbol: currencySymbol.trim() || '৳',
         logoUrl: logoUrl.trim() || undefined,
       });
 
-      db.setCurrentUser(user);
       setIsLoading(false);
-      onSuccess(business, user);
       onClose();
+
+      // Account remains inactive until Gmail verification is completed
+      if (onRequireGmailVerification) {
+        onRequireGmailVerification(cleanEmail);
+      } else {
+        // Fallback
+        onSuccess(business, user);
+      }
     } catch (err: any) {
       setIsLoading(false);
       setError(err.message || 'Registration failed.');
@@ -182,9 +196,10 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
             <Logo size="md" light showTagline compactOnMobile />
           </div>
 
-          <h2 className="text-xl sm:text-2xl font-black tracking-tight">Register New Supermarket Workspace</h2>
-          <p className="text-xs text-emerald-200/90 mt-1">
-            Create an independent, tenant-isolated inventory, barcode generator, and POS cash register portal.
+          <h2 className="text-xl sm:text-2xl font-black tracking-tight">Register Supermarket Workspace</h2>
+          <p className="text-xs text-emerald-200/90 mt-1 flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            Mandatory Gmail email verification required to activate workspace.
           </p>
         </div>
 
@@ -264,15 +279,18 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
               </div>
             </div>
 
-            {/* Email */}
-            <div>
+            {/* Gmail Address (Strictly Required) */}
+            <div className="sm:col-span-2">
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-xs font-bold text-slate-700">
-                  Email Address (Login ID) <span className="text-rose-500">*</span>
+                  Owner Gmail Address <span className="text-rose-500">*</span>
+                  <span className="ml-2 text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+                    @gmail.com Required
+                  </span>
                 </label>
                 {touched.email && (
-                  <span className={`text-[11px] font-semibold ${isEmailValid ? 'text-emerald-600' : 'text-rose-500'}`}>
-                    {isEmailValid ? '✓ Valid format' : 'Invalid email'}
+                  <span className={`text-[11px] font-semibold ${isEmailValidGmail ? 'text-emerald-600' : 'text-rose-500'}`}>
+                    {isEmailValidGmail ? '✓ Valid Gmail Address' : 'Must be a valid @gmail.com address'}
                   </span>
                 )}
               </div>
@@ -283,7 +301,7 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
                   type="email"
                   required
                   disabled={isLoading}
-                  placeholder="owner@supermarket.com"
+                  placeholder="yourname@gmail.com"
                   value={email}
                   onBlur={() => setTouched((prev) => ({ ...prev, email: true }))}
                   onChange={(e) => {
@@ -291,17 +309,20 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
                     if (error) setError(null);
                   }}
                   className={`w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border rounded-xl text-sm focus:outline-none focus:bg-white text-slate-900 transition-all ${
-                    touched.email && !isEmailValid
+                    touched.email && !isEmailValidGmail
                       ? 'border-rose-300 focus:ring-2 focus:ring-rose-400 bg-rose-50/20'
                       : 'border-slate-200 focus:ring-2 focus:ring-emerald-500'
                   }`}
                 />
               </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                A 6-digit verification code will be sent to this Gmail. The account remains inactive until verified.
+              </p>
             </div>
 
-            {/* Phone */}
+            {/* Optional Contact Phone */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Phone Number</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Contact Phone (Optional)</label>
               <div className="relative">
                 <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
@@ -487,7 +508,7 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
                   type="button"
                   disabled={isLoading}
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-2 bg-white border border-slate-300 hover:border-slate-400 text-xs font-bold text-slate-700 rounded-xl shadow-2xs flex items-center gap-2 transition-all hover:bg-slate-50"
+                  className="px-4 py-2 bg-white border border-slate-300 hover:border-slate-400 text-xs font-bold text-slate-700 rounded-xl shadow-2xs flex items-center gap-2 transition-all hover:bg-slate-50 cursor-pointer"
                 >
                   <Upload className="w-3.5 h-3.5 text-emerald-600" />
                   {logoPreview ? 'Change Logo File' : 'Upload Store Logo (PNG / JPG)'}
@@ -502,7 +523,7 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
               id="btn-submit-register"
               type="submit"
               disabled={isLoading}
-              className={`w-full py-4 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/25 rounded-2xl transition-all flex items-center justify-center gap-2 ${
+              className={`w-full py-4 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/25 rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
                 isLoading ? 'opacity-85 cursor-wait' : ''
               }`}
             >
@@ -514,7 +535,7 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
               ) : (
                 <>
                   <CheckCircle2 className="w-5 h-5" />
-                  <span>Create Supermarket Workspace & Launch</span>
+                  <span>Proceed to Gmail Verification</span>
                 </>
               )}
             </button>
@@ -530,7 +551,7 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
               onClose();
               onSwitchToLogin();
             }}
-            className="font-bold text-emerald-600 hover:text-emerald-700 hover:underline inline-flex items-center gap-1"
+            className="font-bold text-emerald-600 hover:text-emerald-700 hover:underline inline-flex items-center gap-1 cursor-pointer"
           >
             Sign In to Existing Workspace
             <ArrowRight className="w-3.5 h-3.5" />
@@ -540,3 +561,4 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
     </div>
   );
 };
+

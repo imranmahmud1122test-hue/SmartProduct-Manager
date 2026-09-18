@@ -1,5 +1,22 @@
 {
   "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role-based access control and tenant assignment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["super_admin", "business_owner", "owner", "manager", "cashier", "staff", "public_visitor"] },
+        "businessId": { "type": "string" },
+        "businessName": { "type": "string" },
+        "phone": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "suspended", "deactivated"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "email", "name", "role", "status", "createdAt"]
+    },
     "Product": {
       "title": "Product",
       "description": "Tenant isolated inventory product item",
@@ -99,6 +116,10 @@
     }
   },
   "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User accounts with roles and unique user IDs"
+    },
     "/products/{productId}": {
       "schema": "Product",
       "description": "Central shared product catalog collection with tenant isolation and public viewing"

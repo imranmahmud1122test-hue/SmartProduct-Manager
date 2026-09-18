@@ -9,7 +9,11 @@ export interface User {
   businessName?: string;
   phone?: string;
   createdAt: string;
-  status: 'active' | 'suspended';
+  status: 'active' | 'suspended' | 'deactivated' | 'pending';
+  emailVerified?: boolean;
+  verificationCode?: string;
+  verificationExpiresAt?: string;
+  isGmailVerified?: boolean;
 }
 
 export interface Business {
@@ -24,12 +28,13 @@ export interface Business {
   logoUrl?: string;
   currencySymbol: string;
   taxRate: number; // percentage, e.g. 5 for 5%
-  status: 'active' | 'suspended' | 'pending';
+  status: 'active' | 'suspended' | 'deactivated' | 'pending';
   createdAt: string;
   description?: string;
   slug?: string;
   isPublicStoreEnabled?: boolean;
   deliveryCharge?: number;
+  emailVerified?: boolean;
 }
 
 export interface Product {

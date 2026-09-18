@@ -21,6 +21,7 @@ interface LoginModalProps {
   onClose: () => void;
   onSuccess: (user: User) => void;
   onSwitchToRegister: () => void;
+  onRequireGmailVerification?: (email: string) => void;
 }
 
 export const LoginModal: React.FC<LoginModalProps> = ({
@@ -28,11 +29,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   onClose,
   onSuccess,
   onSwitchToRegister,
+  onRequireGmailVerification,
 }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingVerificationUser, setPendingVerificationUser] = useState<{ email: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingText, setLoadingText] = useState('Authenticating...');
 
@@ -121,9 +124,22 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       return;
     }
 
+    if (user.status === 'pending' || user.emailVerified === false) {
+      setIsLoading(false);
+      setPendingVerificationUser({ email: user.email });
+      setError('This account is inactive pending Gmail verification. Please verify your Gmail address to activate your workspace.');
+      return;
+    }
+
     if (user.status === 'suspended') {
       setIsLoading(false);
       setError('This account has been suspended. Please contact support.');
+      return;
+    }
+
+    if (user.status === 'deactivated') {
+      setIsLoading(false);
+      setError('This account has been deactivated. Please contact support.');
       return;
     }
 
@@ -177,9 +193,24 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         {/* Form Body */}
         <form onSubmit={handleLogin} className="p-4 sm:p-6 space-y-3.5 sm:space-y-4 overflow-y-auto flex-1">
           {error && (
-            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs font-medium text-rose-700 flex items-start gap-2.5 animate-in fade-in duration-200">
-              <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-              <span>{error}</span>
+            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs font-medium text-rose-700 space-y-2 animate-in fade-in duration-200">
+              <div className="flex items-start gap-2.5">
+                <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+              {pendingVerificationUser && onRequireGmailVerification && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onRequireGmailVerification(pendingVerificationUser.email);
+                  }}
+                  className="w-full mt-2 py-2 px-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  <span>Verify Gmail Address Now</span>
+                </button>
+              )}
             </div>
           )}
 

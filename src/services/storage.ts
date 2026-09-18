@@ -31,6 +31,11 @@ import {
 } from './firebase';
 import { emitGlobalToast } from '../context/ToastContext';
 import { compressImageDataUrl } from '../utils/imageCompressor';
+import {
+  isGmailAddress,
+  generateGmailVerificationCode,
+  getGmailValidationMessage,
+} from '../utils/gmailValidation';
 
 function sanitizeForFirestore<T>(data: T): T {
   if (data === null || data === undefined) {
@@ -113,6 +118,8 @@ const INITIAL_USERS: User[] = [
     phone: '+880 1711-000000',
     createdAt: '2026-01-01T00:00:00Z',
     status: 'active',
+    emailVerified: true,
+    isGmailVerified: true,
   },
   {
     id: 'USR-ADMIN',
@@ -123,6 +130,8 @@ const INITIAL_USERS: User[] = [
     phone: '+880 1711-000000',
     createdAt: '2026-01-01T00:00:00Z',
     status: 'active',
+    emailVerified: true,
+    isGmailVerified: true,
   },
 ];
 
@@ -680,18 +689,41 @@ export const db = {
     phone?: string;
   }): User {
     const users = this.getUsers();
+    const cleanEmail = (userData.email || '').trim().toLowerCase();
+    const isSuperAdmin = userData.role === 'super_admin' || cleanEmail === 'imranmahmud1122.test@gmail.com';
+
     const newUser: User = {
       id: `USR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
-      email: userData.email,
+      email: cleanEmail,
       name: userData.name,
       role: userData.role,
       businessId: userData.businessId,
       phone: userData.phone || '',
       createdAt: new Date().toISOString(),
-      status: 'active',
+      status: isSuperAdmin ? 'active' : 'pending',
+      emailVerified: isSuperAdmin ? true : false,
+      isGmailVerified: isSuperAdmin ? true : false,
     };
+
     users.push(newUser);
     setToStorage(STORAGE_KEYS.USERS, users);
+
+    setDoc(doc(firestoreDb, 'users', newUser.id), newUser).catch((err) =>
+      handleFirestoreError(err, OperationType.CREATE, `users/${newUser.id}`)
+    );
+
+    // Auto-dispatch verification code for new user if pending Gmail
+    if (!isSuperAdmin && cleanEmail.endsWith('@gmail.com')) {
+      fetch('/api/auth/send-verification-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          name: userData.name,
+        }),
+      }).catch((err) => console.warn('Auto send verification code failed for new user:', err));
+    }
+
     return newUser;
   },
 
@@ -728,6 +760,88 @@ export const db = {
     return undefined;
   },
 
+  updateUserStatus(
+    userId: string,
+    status: 'active' | 'suspended' | 'deactivated',
+    adminUser: User
+  ): User {
+    if (adminUser.role !== 'super_admin') {
+      throw new Error('Unauthorized: Super Admin role required to modify user status.');
+    }
+
+    const users = this.getUsers();
+    const index = users.findIndex((u) => u.id === userId);
+    if (index === -1) {
+      throw new Error('User not found.');
+    }
+
+    users[index].status = status;
+    if (status === 'active') {
+      users[index].emailVerified = true;
+      users[index].isGmailVerified = true;
+
+      // Also activate business workspace if user is business owner
+      if (users[index].businessId) {
+        const businesses = this.getBusinesses();
+        const bizIndex = businesses.findIndex((b) => b.id === users[index].businessId);
+        if (bizIndex !== -1) {
+          businesses[bizIndex].status = 'active';
+          businesses[bizIndex].emailVerified = true;
+          setToStorage(STORAGE_KEYS.BUSINESSES, businesses);
+          setDoc(doc(firestoreDb, 'businesses', businesses[bizIndex].id), { status: 'active', emailVerified: true }, { merge: true }).catch((err) =>
+            handleFirestoreError(err, OperationType.UPDATE, `businesses/${businesses[bizIndex].id}`)
+          );
+        }
+      }
+    }
+    setToStorage(STORAGE_KEYS.USERS, users);
+
+    setDoc(doc(firestoreDb, 'users', userId), {
+      status,
+      ...(status === 'active' ? { emailVerified: true, isGmailVerified: true } : {})
+    }, { merge: true }).catch((err) =>
+      handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`)
+    );
+
+    this.logAudit({
+      userId: adminUser.id,
+      userName: adminUser.name,
+      userRole: adminUser.role,
+      action: 'UPDATE_USER_STATUS',
+      details: `User ${users[index].name} (${users[index].email}) status updated to ${status}`,
+    });
+
+    return users[index];
+  },
+
+  deleteUser(userId: string, adminUser: User): void {
+    if (adminUser.role !== 'super_admin') {
+      throw new Error('Unauthorized: Super Admin privileges required to delete a user.');
+    }
+
+    if (userId === 'USR-ADMIN-IMRAN' || userId === 'USR-ADMIN' || userId === adminUser.id) {
+      throw new Error('Security policy: Primary Super Admin account cannot be deleted.');
+    }
+
+    const users = this.getUsers();
+    const targetUser = users.find((u) => u.id === userId);
+
+    const remainingUsers = users.filter((u) => u.id !== userId);
+    setToStorage(STORAGE_KEYS.USERS, remainingUsers);
+
+    deleteDoc(doc(firestoreDb, 'users', userId)).catch((err) =>
+      handleFirestoreError(err, OperationType.DELETE, `users/${userId}`)
+    );
+
+    this.logAudit({
+      userId: adminUser.id,
+      userName: adminUser.name,
+      userRole: adminUser.role,
+      action: 'DELETE_USER',
+      details: `User account permanently deleted: ${targetUser?.name || 'User'} (${targetUser?.email || userId}, ID: ${userId}, Role: ${targetUser?.role || 'user'})`,
+    });
+  },
+
   // Business / Tenant Management
   getBusinesses(): Business[] {
     const list = getFromStorage<Business[]>(STORAGE_KEYS.BUSINESSES, INITIAL_BUSINESSES);
@@ -750,7 +864,7 @@ export const db = {
     return businesses.find((b) => b.id === businessId);
   },
 
-  registerBusiness(data: {
+  async registerBusiness(data: {
     ownerName: string;
     businessName?: string;
     name?: string;
@@ -761,7 +875,15 @@ export const db = {
     businessType?: Business['businessType'];
     logoUrl?: string;
     currencySymbol?: string;
-  }): { user: User; business: Business } {
+  }): Promise<{ user: User; business: Business }> {
+    const cleanEmail = (data.email || '').trim().toLowerCase();
+
+    // Enforce strict Gmail address validation
+    if (!isGmailAddress(cleanEmail)) {
+      const msg = getGmailValidationMessage(cleanEmail);
+      throw new Error(msg || 'First-time registration requires a valid Gmail address (@gmail.com).');
+    }
+
     const businesses = this.getBusinesses();
     const users = this.getUsers();
 
@@ -785,28 +907,31 @@ export const db = {
       name: finalBusinessName,
       ownerName: data.ownerName,
       ownerId: userId,
-      email: data.email,
+      email: cleanEmail,
       phone: data.phone || '',
       address: data.address || '',
       businessType: data.businessType || 'Supermarket',
       logoUrl: data.logoUrl || 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=200&auto=format&fit=crop&q=80',
       currencySymbol: data.currencySymbol || '৳',
       taxRate: 5.0,
-      status: 'active',
+      status: 'pending', // Inactive until Gmail verification is completed
       createdAt: new Date().toISOString(),
       isPublicStoreEnabled: true,
+      emailVerified: false,
     };
 
     const newUser: User = {
       id: userId,
-      email: data.email,
+      email: cleanEmail,
       name: data.ownerName,
       role: 'business_owner',
       businessId: businessId,
       businessName: finalBusinessName,
       phone: data.phone || '',
       createdAt: new Date().toISOString(),
-      status: 'active',
+      status: 'pending', // Account remains inactive until verified
+      emailVerified: false,
+      isGmailVerified: false,
     };
 
     businesses.push(newBusiness);
@@ -823,48 +948,327 @@ export const db = {
       handleFirestoreError(err, OperationType.CREATE, `users/${newUser.id}`)
     );
 
+    // Dispatch secure email verification code via backend API
+    try {
+      await fetch('/api/auth/send-verification-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          name: data.ownerName,
+          businessName: finalBusinessName,
+        }),
+      });
+    } catch (apiErr) {
+      console.warn('Backend email dispatch notification:', apiErr);
+    }
+
     this.logAudit({
       businessId,
       businessName: finalBusinessName,
       userId,
       userName: data.ownerName,
       userRole: 'business_owner',
-      action: 'REGISTER_BUSINESS',
-      details: `New business workspace registered: ${finalBusinessName} (${businessId})`,
+      action: 'REGISTER_BUSINESS_GMAIL_PENDING',
+      details: `New workspace registered with Gmail verification email dispatched to ${cleanEmail}: ${finalBusinessName} (${businessId})`,
     });
 
     return { user: newUser, business: newBusiness };
   },
 
+  // Gmail Verification Methods
+  async verifyGmailCode(email: string, code: string): Promise<{ success: boolean; user?: User; business?: Business; error?: string }> {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanCode = code.trim();
+    const users = this.getUsers();
+    const userIndex = users.findIndex((u) => u.email.toLowerCase() === cleanEmail);
+
+    if (userIndex === -1) {
+      return { success: false, error: 'User account not found for this Gmail address.' };
+    }
+
+    const user = users[userIndex];
+
+    // Already active and verified
+    if (user.status === 'active' && user.emailVerified) {
+      const biz = user.businessId ? this.getBusinessById(user.businessId) : undefined;
+      return { success: true, user, business: biz };
+    }
+
+    // Call backend API to verify the secure code
+    try {
+      const response = await fetch('/api/auth/verify-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, code: cleanCode }),
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        return {
+          success: false,
+          error: result.error || 'Incorrect 6-digit verification code. Please check your Gmail or request a new code.',
+        };
+      }
+    } catch (apiErr: any) {
+      return {
+        success: false,
+        error: 'Unable to connect to verification service. Please check your network connection.',
+      };
+    }
+
+    // Activate User
+    user.status = 'active';
+    user.emailVerified = true;
+    user.isGmailVerified = true;
+    user.verificationCode = undefined;
+    user.verificationExpiresAt = undefined;
+    users[userIndex] = user;
+    setToStorage(STORAGE_KEYS.USERS, users);
+
+    // Activate Business Workspace if applicable
+    let activatedBiz: Business | undefined;
+    if (user.businessId) {
+      const businesses = this.getBusinesses();
+      const bizIndex = businesses.findIndex((b) => b.id === user.businessId);
+      if (bizIndex !== -1) {
+        businesses[bizIndex].status = 'active';
+        businesses[bizIndex].emailVerified = true;
+        setToStorage(STORAGE_KEYS.BUSINESSES, businesses);
+        activatedBiz = businesses[bizIndex];
+        setDoc(doc(firestoreDb, 'businesses', businesses[bizIndex].id), { status: 'active', emailVerified: true }, { merge: true }).catch((err) =>
+          handleFirestoreError(err, OperationType.UPDATE, `businesses/${businesses[bizIndex].id}`)
+        );
+      }
+    }
+
+    // Sync user activation to Firestore
+    setDoc(doc(firestoreDb, 'users', user.id), { status: 'active', emailVerified: true, isGmailVerified: true, verificationCode: null, verificationExpiresAt: null }, { merge: true }).catch((err) =>
+      handleFirestoreError(err, OperationType.UPDATE, `users/${user.id}`)
+    );
+
+    // Set current active user session
+    this.setCurrentUser(user);
+
+    this.logAudit({
+      businessId: user.businessId,
+      userId: user.id,
+      userName: user.name,
+      userRole: user.role,
+      action: 'GMAIL_VERIFICATION_SUCCESS',
+      details: `Gmail verification confirmed for ${user.email}. Account and workspace activated.`,
+    });
+
+    return { success: true, user, business: activatedBiz };
+  },
+
+  async resendGmailCode(email: string): Promise<{ success: boolean; message?: string; error?: string }> {
+    const cleanEmail = email.trim().toLowerCase();
+    const users = this.getUsers();
+    const userIndex = users.findIndex((u) => u.email.toLowerCase() === cleanEmail);
+
+    if (userIndex === -1) {
+      return { success: false, error: 'No account registered with this Gmail address.' };
+    }
+
+    try {
+      const response = await fetch('/api/auth/resend-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail }),
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        return {
+          success: false,
+          error: result.error || 'Unable to resend verification code. Please try again shortly.',
+        };
+      }
+
+      this.logAudit({
+        businessId: users[userIndex].businessId,
+        userId: users[userIndex].id,
+        userName: users[userIndex].name,
+        userRole: users[userIndex].role,
+        action: 'RESEND_GMAIL_VERIFICATION',
+        details: `New Gmail verification code dispatched to ${cleanEmail}`,
+      });
+
+      return { success: true, message: result.message };
+    } catch (e: any) {
+      return {
+        success: false,
+        error: 'Network error while contacting email service.',
+      };
+    }
+  },
+
+  getPendingGmailVerification(email: string): { user: User } | null {
+    const cleanEmail = email.trim().toLowerCase();
+    const users = this.getUsers();
+    const user = users.find((u) => u.email.toLowerCase() === cleanEmail);
+    if (!user) return null;
+    return { user };
+  },
+
   updateBusiness(businessId: string, updates: Partial<Business>, user?: User): Business {
     const businesses = this.getBusinesses();
     const index = businesses.findIndex((b) => b.id === businessId);
-    if (index === -1) throw new Error('Business not found');
+    if (index === -1) throw new Error('Business shop profile not found.');
 
-    businesses[index] = { ...businesses[index], ...updates };
+    const targetBusiness = businesses[index];
+
+    // SECURITY AUTHORIZATION CHECK:
+    // A Business Owner can update ONLY their own shop profile.
+    if (user) {
+      const isSuperAdmin =
+        user.role === 'super_admin' ||
+        user.email?.toLowerCase() === 'imranmahmud1122.test@gmail.com' ||
+        user.email?.toLowerCase() === 'admin@smartsupermarket.com';
+
+      const isAuthorizedOwner =
+        (user.role === 'business_owner' || user.role === 'owner') &&
+        (user.businessId === businessId || targetBusiness.ownerId === user.id);
+
+      if (!isSuperAdmin && !isAuthorizedOwner) {
+        throw new Error(
+          `Security Violation: Access Denied. You do not have permission to edit Business Owner shop profile "${targetBusiness.name}" (${businessId}).`
+        );
+      }
+    }
+
+    // IMMUTABLE SECURITY FIELD PROTECTION
+    // Disallow modifying permanent IDs, owner identity, verification status, or roles via shop profile updates
+    const safeUpdates: Partial<Business> = { ...updates };
+    delete safeUpdates.id;
+    delete safeUpdates.ownerId;
+    delete safeUpdates.ownerName;
+    delete safeUpdates.createdAt;
+    delete safeUpdates.status;
+    delete safeUpdates.emailVerified;
+
+    // Validate uploaded shop logo size if provided as Data URL
+    if (safeUpdates.logoUrl && safeUpdates.logoUrl.startsWith('data:image/')) {
+      if (safeUpdates.logoUrl.length > 10 * 1024 * 1024) {
+        throw new Error('Shop logo image payload is too large. Please upload an image under 5MB.');
+      }
+    }
+
+    const updatedBusiness: Business = {
+      ...targetBusiness,
+      ...safeUpdates,
+      name: safeUpdates.name ? safeUpdates.name.trim() : targetBusiness.name,
+    };
+
+    businesses[index] = updatedBusiness;
     setToStorage(STORAGE_KEYS.BUSINESSES, businesses);
 
-    // Update in Firestore
-    setDoc(doc(firestoreDb, 'businesses', businessId), businesses[index], { merge: true }).catch((err) =>
+    // Synchronize in Firestore
+    setDoc(doc(firestoreDb, 'businesses', businessId), sanitizeForFirestore(updatedBusiness), { merge: true }).catch((err) =>
       handleFirestoreError(err, OperationType.UPDATE, `businesses/${businessId}`)
     );
+
+    // Synchronize owner user record businessName
+    const users = this.getUsers();
+    const ownerIndex = users.findIndex((u) => u.id === targetBusiness.ownerId || u.businessId === businessId);
+    if (ownerIndex !== -1 && safeUpdates.name) {
+      users[ownerIndex].businessName = safeUpdates.name;
+      setToStorage(STORAGE_KEYS.USERS, users);
+      setDoc(doc(firestoreDb, 'users', users[ownerIndex].id), { businessName: safeUpdates.name }, { merge: true }).catch((err) =>
+        handleFirestoreError(err, OperationType.UPDATE, `users/${users[ownerIndex].id}`)
+      );
+    }
+
+    // Synchronize active logged in user in memory if applicable
+    const currentUser = this.getCurrentUser();
+    if (currentUser && (currentUser.businessId === businessId || currentUser.id === targetBusiness.ownerId) && safeUpdates.name) {
+      const updatedCurrentUser = { ...currentUser, businessName: safeUpdates.name };
+      this.setCurrentUser(updatedCurrentUser);
+    }
+
+    // Synchronize products businessName across inventory and public store
+    if (safeUpdates.name && safeUpdates.name !== targetBusiness.name) {
+      const newShopName = safeUpdates.name;
+      const allProducts = this.getAllProductsRaw();
+      let updatedCount = 0;
+      const updatedProducts = allProducts.map((p) => {
+        if (p.businessId === businessId) {
+          updatedCount++;
+          setDoc(doc(firestoreDb, 'products', p.id), { businessName: newShopName }, { merge: true }).catch((err) =>
+            handleFirestoreError(err, OperationType.UPDATE, `products/${p.id}`)
+          );
+          return { ...p, businessName: newShopName };
+        }
+        return p;
+      });
+
+      if (updatedCount > 0) {
+        this.setProductsInMemory(updatedProducts, false);
+      }
+    }
+
+    // Notify all UI components and event listeners
+    notifyStorageUpdate(STORAGE_KEYS.BUSINESSES);
+    notifyStorageUpdate(STORAGE_KEYS.PRODUCTS);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('spm_business_update', { detail: { businessId, updatedBusiness, timestamp: Date.now() } }));
+    }
 
     if (user) {
       this.logAudit({
         businessId,
-        businessName: businesses[index].name,
+        businessName: updatedBusiness.name,
         userId: user.id,
         userName: user.name,
         userRole: user.role,
         action: 'UPDATE_BUSINESS',
-        details: `Business details updated for ${businesses[index].name}`,
+        details: `Shop profile updated for ${updatedBusiness.name} (${businessId}). Updated fields: ${Object.keys(safeUpdates).join(', ')}`,
       });
     }
 
-    return businesses[index];
+    return updatedBusiness;
   },
 
-  updateBusinessStatus(businessId: string, status: 'active' | 'suspended', adminUser?: User): Business {
+  async updateShopProfile(
+    businessId: string,
+    updates: Partial<Business>,
+    requestingUser: User
+  ): Promise<Business> {
+    // 1. Check server-side authorization API endpoint
+    try {
+      const response = await fetch('/api/business/update-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessId,
+          requestingUser: {
+            id: requestingUser.id,
+            email: requestingUser.email,
+            role: requestingUser.role,
+            businessId: requestingUser.businessId,
+          },
+          updates,
+        }),
+      });
+
+      const resData = await response.json();
+      if (!response.ok || !resData.success) {
+        throw new Error(resData.error || 'Shop profile update denied by server security layer.');
+      }
+    } catch (apiErr: any) {
+      // Re-throw security authorization errors immediately
+      if (apiErr.message && (apiErr.message.includes('Security Violation') || apiErr.message.includes('Access Denied'))) {
+        throw apiErr;
+      }
+      console.warn('[Shop Profile Sync Note]:', apiErr?.message);
+    }
+
+    // 2. Perform database update with local + Firestore synchronization
+    return this.updateBusiness(businessId, updates, requestingUser);
+  },
+
+  updateBusinessStatus(businessId: string, status: 'active' | 'suspended' | 'deactivated', adminUser?: User): Business {
     const businesses = this.getBusinesses();
     const index = businesses.findIndex((b) => b.id === businessId);
     if (index === -1) throw new Error('Business not found');
@@ -894,7 +1298,7 @@ export const db = {
         userId: adminUser.id,
         userName: adminUser.name,
         userRole: adminUser.role,
-        action: status === 'active' ? 'ACTIVATE_BUSINESS' : 'SUSPEND_BUSINESS',
+        action: status === 'active' ? 'ACTIVATE_BUSINESS' : status === 'deactivated' ? 'DEACTIVATE_BUSINESS' : 'SUSPEND_BUSINESS',
         details: `Business ${businesses[index].name} status set to ${status}`,
       });
     }
@@ -903,10 +1307,18 @@ export const db = {
   },
 
   deleteBusiness(businessId: string, adminUser: User): void {
+    if (adminUser.role !== 'super_admin') {
+      throw new Error('Unauthorized: Super Admin role required to delete a business.');
+    }
+
     let businesses = this.getBusinesses();
     const target = businesses.find((b) => b.id === businessId);
     businesses = businesses.filter((b) => b.id !== businessId);
     setToStorage(STORAGE_KEYS.BUSINESSES, businesses);
+
+    deleteDoc(doc(firestoreDb, 'businesses', businessId)).catch((err) =>
+      handleFirestoreError(err, OperationType.DELETE, `businesses/${businessId}`)
+    );
 
     // Filter out users, products, sales, movements for this business
     let users = this.getUsers().filter((u) => u.businessId !== businessId);

@@ -43,8 +43,11 @@ export const BusinessSettingsView: React.FC<BusinessSettingsViewProps> = ({
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
+  const [description, setDescription] = useState('');
+  const [businessType, setBusinessType] = useState<Business['businessType']>('Supermarket');
   const [isPublicStoreEnabled, setIsPublicStoreEnabled] = useState(true);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
@@ -65,6 +68,8 @@ export const BusinessSettingsView: React.FC<BusinessSettingsViewProps> = ({
       setPhone(business.phone || '');
       setEmail(business.email || '');
       setAddress(business.address || '');
+      setDescription(business.description || '');
+      setBusinessType(business.businessType || 'Supermarket');
       setIsPublicStoreEnabled(business.isPublicStoreEnabled ?? true);
     }
 
@@ -80,15 +85,22 @@ export const BusinessSettingsView: React.FC<BusinessSettingsViewProps> = ({
     business?.phone,
     business?.email,
     business?.address,
+    business?.description,
+    business?.businessType,
     business?.isPublicStoreEnabled,
     businessId,
   ]);
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setError(null);
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        setError('Logo image file must be smaller than 10MB');
+      if (!file.type.startsWith('image/')) {
+        setError('Selected file is not a valid image format. Please select a PNG, JPG, or WEBP image.');
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Shop logo image file must be smaller than 5MB.');
         return;
       }
       try {
@@ -115,30 +127,41 @@ export const BusinessSettingsView: React.FC<BusinessSettingsViewProps> = ({
     e.preventDefault();
     setError(null);
     setSaveSuccess(false);
+    setIsSaving(true);
 
     if (!name.trim()) {
-      setError('Business Name cannot be empty.');
+      setError('Shop Name cannot be empty.');
+      setIsSaving(false);
       return;
     }
 
     try {
-      const finalLogoUrl = logoUrl ? await compressImageDataUrl(logoUrl, 600, 600, 0.75) : undefined;
-      const updated = db.updateBusiness(businessId, {
-        name: name.trim(),
-        logoUrl: finalLogoUrl,
-        currencySymbol: currencySymbol.trim() || '৳',
-        taxRate: Number(taxRate) || 0,
-        phone: phone.trim(),
-        email: email.trim(),
-        address: address.trim(),
-        isPublicStoreEnabled,
-      });
+      const finalLogoUrl = logoUrl ? await compressImageDataUrl(logoUrl, 600, 600, 0.75) : '';
+      const updated = await db.updateShopProfile(
+        businessId,
+        {
+          name: name.trim(),
+          logoUrl: finalLogoUrl,
+          currencySymbol: currencySymbol.trim() || '৳',
+          taxRate: Number(taxRate) || 0,
+          phone: phone.trim(),
+          email: email.trim(),
+          address: address.trim(),
+          description: description.trim(),
+          businessType,
+          isPublicStoreEnabled,
+        },
+        currentUser
+      );
 
       onBusinessUpdated(updated);
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      setTimeout(() => setSaveSuccess(false), 4000);
     } catch (err: any) {
-      setError(err.message || 'Failed to save settings.');
+      console.error('[Shop Profile Save Error]', err);
+      setError(err.message || 'Failed to save shop profile settings.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -364,6 +387,67 @@ export const BusinessSettingsView: React.FC<BusinessSettingsViewProps> = ({
               />
             </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Business Type / Category</label>
+                <select
+                  value={businessType}
+                  onChange={(e) => setBusinessType(e.target.value as Business['businessType'])}
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="Supermarket">Supermarket & Mart</option>
+                  <option value="Grocery Store">Grocery & Daily Essentials</option>
+                  <option value="Organic Market">Fresh Organic Market</option>
+                  <option value="Department Store">Departmental Store</option>
+                  <option value="Wholesale & Retail">Wholesale & Retail Hub</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Store About / Description</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Fresh organic groceries and daily essentials with fast home delivery."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+            </div>
+
+            {/* Read-Only Security & Ownership Credentials Box */}
+            <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 text-xs space-y-2">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                <span className="text-emerald-400 font-bold uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <Lock className="w-4 h-4" /> Immutable Ownership Credentials
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold">
+                  VERIFIED OWNER
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-300">
+                <div>
+                  <span className="text-slate-400 block text-[10px]">Permanent Shop ID:</span>
+                  <span className="font-mono font-bold text-white">{businessId}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">Owner User ID:</span>
+                  <span className="font-mono font-bold text-white">{currentUser.id}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">Owner Account Email:</span>
+                  <span className="font-mono font-bold text-emerald-400">{currentUser.email}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">Account Role:</span>
+                  <span className="font-bold text-white uppercase">{currentUser.role}</span>
+                </div>
+              </div>
+              <p className="text-slate-400 text-[10px] leading-relaxed pt-1 border-t border-slate-800/80">
+                For security protection, permanent user ID, owner identity, user role, and verification status are strictly locked. You can update only your own shop profile details.
+              </p>
+            </div>
+
             {/* Language Preference Section */}
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-center space-x-3">
@@ -440,9 +524,11 @@ export const BusinessSettingsView: React.FC<BusinessSettingsViewProps> = ({
             <div className="pt-2 flex justify-end">
               <button
                 type="submit"
-                className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                disabled={isSaving}
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
               >
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> {t('save', 'Save Changes')}
+                <CheckCircle2 className="w-4 h-4 text-white" />
+                {isSaving ? 'Saving Shop Profile...' : t('save', 'Save Shop Profile')}
               </button>
             </div>
           </form>
