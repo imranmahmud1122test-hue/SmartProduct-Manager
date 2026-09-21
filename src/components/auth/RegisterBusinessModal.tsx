@@ -146,59 +146,60 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
       return;
     }
 
-    // Must have verified Google account or provided owner name
-    const finalOwnerName = ownerName.trim() || googleUser?.displayName || 'Store Owner';
+    let activeGoogleUser = googleUser;
+
+    // If user hasn't authenticated via Google button yet, initiate Google authentication
+    if (!activeGoogleUser) {
+      setIsLoading(true);
+      setLoadingStep('Connecting to Google Authentication...');
+      try {
+        activeGoogleUser = await signInWithGooglePopup();
+        setGoogleUser(activeGoogleUser);
+        if (activeGoogleUser.displayName && !ownerName) {
+          setOwnerName(activeGoogleUser.displayName);
+        }
+        if (activeGoogleUser.photoURL && !logoUrl) {
+          setLogoPreview(activeGoogleUser.photoURL);
+          setLogoUrl(activeGoogleUser.photoURL);
+        }
+      } catch (authErr: any) {
+        setIsLoading(false);
+        setError(authErr.message || 'Please authenticate with your Google Account to complete store registration.');
+        return;
+      }
+    }
+
+    if (!activeGoogleUser || !activeGoogleUser.uid || typeof activeGoogleUser.uid !== 'string' || !activeGoogleUser.uid.trim()) {
+      setIsLoading(false);
+      setError('Invalid Google Authentication: missing user UID. Please click "Authenticate with Google Account" again.');
+      return;
+    }
+
+    const finalOwnerName = ownerName.trim() || activeGoogleUser.displayName || 'Store Owner';
 
     setIsLoading(true);
     setLoadingStep('Provisioning your store workspace & database partition...');
 
     try {
-      if (googleUser) {
-        // Authenticated with real Google OAuth
-        const { user, business } = await db.registerBusinessWithGoogle({
-          googleUser: {
-            email: googleUser.email,
-            displayName: finalOwnerName,
-            photoURL: googleUser.photoURL,
-            uid: googleUser.uid,
-          },
-          businessName: businessName.trim(),
-          phone: phone.trim() || undefined,
-          address: address.trim() || 'Dhaka, Bangladesh',
-          businessType,
-          currencySymbol: currencySymbol.trim() || '৳',
-          logoUrl: logoUrl.trim() || undefined,
-        });
+      // Authenticated with real Google OAuth UID
+      const { user, business } = await db.registerBusinessWithGoogle({
+        googleUser: {
+          email: activeGoogleUser.email,
+          displayName: finalOwnerName,
+          photoURL: activeGoogleUser.photoURL,
+          uid: activeGoogleUser.uid.trim(),
+        },
+        businessName: businessName.trim(),
+        phone: phone.trim() || undefined,
+        address: address.trim() || 'Dhaka, Bangladesh',
+        businessType,
+        currencySymbol: currencySymbol.trim() || '৳',
+        logoUrl: logoUrl.trim() || undefined,
+      });
 
-        setIsLoading(false);
-        onClose();
-        onSuccess(business, user);
-      } else {
-        // Manual fallback registration if Google popup is not used
-        const cleanEmail = (manualEmail || '').trim().toLowerCase();
-        if (!cleanEmail || !cleanEmail.includes('@')) {
-          setIsLoading(false);
-          setError('Please sign in with Google or enter a valid email address.');
-          return;
-        }
-
-        const { user, business } = await db.registerBusiness({
-          ownerName: finalOwnerName,
-          businessName: businessName.trim(),
-          email: cleanEmail,
-          password: manualPassword || '123456',
-          phone: phone.trim() || undefined,
-          address: address.trim() || 'Dhaka, Bangladesh',
-          businessType,
-          currencySymbol: currencySymbol.trim() || '৳',
-          logoUrl: logoUrl.trim() || undefined,
-          authProvider: 'password',
-        });
-
-        setIsLoading(false);
-        onClose();
-        onSuccess(business, user);
-      }
+      setIsLoading(false);
+      onClose();
+      onSuccess(business, user);
     } catch (err: any) {
       setIsLoading(false);
       setError(err.message || 'Workspace registration failed.');

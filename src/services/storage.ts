@@ -27,7 +27,8 @@ import {
   where,
   testFirestoreConnection,
   handleFirestoreError,
-  OperationType
+  OperationType,
+  auth
 } from './firebase';
 import { emitGlobalToast } from '../context/ToastContext';
 import { compressImageDataUrl } from '../utils/imageCompressor';
@@ -38,7 +39,9 @@ function sanitizeForFirestore<T>(data: T): T {
     return null as any;
   }
   if (Array.isArray(data)) {
-    return data.map(item => sanitizeForFirestore(item)) as any;
+    return data
+      .filter((item) => item !== undefined)
+      .map((item) => sanitizeForFirestore(item)) as any;
   }
   if (typeof data === 'object') {
     const result: any = {};
@@ -713,17 +716,9 @@ export const db = {
     users.push(newUser);
     setToStorage(STORAGE_KEYS.USERS, users);
 
-    setDoc(doc(firestoreDb, 'users', newUser.id), newUser).catch((err) =>
+    setDoc(doc(firestoreDb, 'users', newUser.id), sanitizeForFirestore(newUser)).catch((err) =>
       handleFirestoreError(err, OperationType.CREATE, `users/${newUser.id}`)
     );
-
-    // Auto-dispatch verification code for new user if pending Gmail
-    if (!isSuperAdmin && cleanEmail.endsWith('@gmail.com')) {
-      apiPost('/api/auth/send-verification-code', {
-        email: cleanEmail,
-        name: userData.name,
-      }).catch((err) => console.warn('Auto send verification code failed for new user:', err));
-    }
 
     return newUser;
   },
@@ -881,6 +876,15 @@ export const db = {
     photoURL?: string;
   }): Promise<{ user: User; business: Business }> {
     const cleanEmail = (data.email || '').trim().toLowerCase();
+    if (!cleanEmail) {
+      throw new Error('A valid email address is required for store registration.');
+    }
+
+    // Determine and validate Firebase Authentication UID
+    const authenticatedUid = (data.authUid || auth.currentUser?.uid || '').trim();
+    const authenticatedPhoto = data.photoURL || auth.currentUser?.photoURL || undefined;
+
+    const isGoogleAuth = data.authProvider === 'google' || Boolean(authenticatedUid);
 
     const businesses = this.getBusinesses();
     const users = this.getUsers();
@@ -899,11 +903,12 @@ export const db = {
     const businessId = `SHOP-${String(candidateIndex).padStart(3, '0')}`;
     const userId = `USR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     const finalBusinessName = data.businessName || data.name || 'My Supermarket';
+    const finalOwnerName = data.ownerName || auth.currentUser?.displayName || 'Store Owner';
 
     const newBusiness: Business = {
       id: businessId,
       name: finalBusinessName,
-      ownerName: data.ownerName,
+      ownerName: finalOwnerName,
       ownerId: userId,
       email: cleanEmail,
       phone: data.phone || '',
@@ -923,7 +928,7 @@ export const db = {
     const newUser: User = {
       id: userId,
       email: cleanEmail,
-      name: data.ownerName,
+      name: finalOwnerName,
       role: isSuperAdminEmail ? 'super_admin' : 'business_owner',
       businessId: businessId,
       businessName: finalBusinessName,
@@ -932,10 +937,15 @@ export const db = {
       status: 'active',
       emailVerified: true,
       isGmailVerified: true,
-      authProvider: data.authProvider || 'google',
-      authUid: data.authUid,
-      photoURL: data.photoURL,
+      authProvider: isGoogleAuth ? 'google' : 'password',
     };
+
+    if (authenticatedUid) {
+      newUser.authUid = authenticatedUid;
+    }
+    if (authenticatedPhoto) {
+      newUser.photoURL = authenticatedPhoto;
+    }
 
     businesses.push(newBusiness);
     users.push(newUser);
@@ -943,13 +953,24 @@ export const db = {
     setToStorage(STORAGE_KEYS.BUSINESSES, businesses);
     setToStorage(STORAGE_KEYS.USERS, users);
 
-    // Save to Firestore
-    setDoc(doc(firestoreDb, 'businesses', newBusiness.id), newBusiness).catch((err) =>
-      handleFirestoreError(err, OperationType.CREATE, `businesses/${newBusiness.id}`)
-    );
-    setDoc(doc(firestoreDb, 'users', newUser.id), newUser).catch((err) =>
-      handleFirestoreError(err, OperationType.CREATE, `users/${newUser.id}`)
-    );
+    // Save to Firestore with strict sanitization (removing any undefined values)
+    try {
+      const sanitizedBiz = sanitizeForFirestore(newBusiness);
+      setDoc(doc(firestoreDb, 'businesses', newBusiness.id), sanitizedBiz).catch((err) =>
+        handleFirestoreError(err, OperationType.CREATE, `businesses/${newBusiness.id}`)
+      );
+    } catch (bizErr) {
+      console.warn('Firestore business save error:', bizErr);
+    }
+
+    try {
+      const sanitizedUser = sanitizeForFirestore(newUser);
+      setDoc(doc(firestoreDb, 'users', newUser.id), sanitizedUser).catch((err) =>
+        handleFirestoreError(err, OperationType.CREATE, `users/${newUser.id}`)
+      );
+    } catch (userErr) {
+      console.warn('Firestore user save error:', userErr);
+    }
 
     this.setCurrentUser(newUser);
 
@@ -957,7 +978,7 @@ export const db = {
       businessId,
       businessName: finalBusinessName,
       userId,
-      userName: data.ownerName,
+      userName: finalOwnerName,
       userRole: newUser.role,
       action: 'REGISTER_BUSINESS_SUCCESS',
       details: `New workspace registered and activated with Google Verified Authentication: ${finalBusinessName} (${businessId}) for ${cleanEmail}`,
@@ -975,7 +996,12 @@ export const db = {
     photoURL?: string;
     uid: string;
   }): Promise<{ success: boolean; user?: User; business?: Business; isNew?: boolean; error?: string }> {
+    if (!googleUser || !googleUser.uid || typeof googleUser.uid !== 'string' || !googleUser.uid.trim()) {
+      return { success: false, error: 'Invalid Google Authentication: missing authentic user UID.' };
+    }
+
     const cleanEmail = googleUser.email.trim().toLowerCase();
+    const validUid = googleUser.uid.trim();
     const users = this.getUsers();
 
     // Check for Super Admin predefined account
@@ -994,9 +1020,9 @@ export const db = {
           emailVerified: true,
           isGmailVerified: true,
           authProvider: 'google',
-          authUid: googleUser.uid,
-          photoURL: googleUser.photoURL,
+          authUid: validUid,
         };
+        if (googleUser.photoURL) superAdminUser.photoURL = googleUser.photoURL;
         users.push(superAdminUser);
         setToStorage(STORAGE_KEYS.USERS, users);
       } else {
@@ -1004,12 +1030,12 @@ export const db = {
         superAdminUser.emailVerified = true;
         superAdminUser.isGmailVerified = true;
         superAdminUser.authProvider = 'google';
-        superAdminUser.authUid = googleUser.uid;
+        superAdminUser.authUid = validUid;
         if (googleUser.photoURL) superAdminUser.photoURL = googleUser.photoURL;
         setToStorage(STORAGE_KEYS.USERS, users);
       }
 
-      setDoc(doc(firestoreDb, 'users', superAdminUser.id), superAdminUser, { merge: true }).catch((err) =>
+      setDoc(doc(firestoreDb, 'users', superAdminUser.id), sanitizeForFirestore(superAdminUser), { merge: true }).catch((err) =>
         handleFirestoreError(err, OperationType.UPDATE, `users/${superAdminUser.id}`)
       );
 
@@ -1027,8 +1053,8 @@ export const db = {
       return { success: true, user: superAdminUser, business: biz, isNew: false };
     }
 
-    // Standard business owner / staff lookup
-    const existingUser = users.find((u) => u.email.toLowerCase() === cleanEmail);
+    // Standard business owner / staff lookup - Match by email OR by permanent authUid
+    const existingUser = users.find((u) => u.email.toLowerCase() === cleanEmail || (u.authUid && u.authUid === validUid));
 
     if (existingUser) {
       if (existingUser.status === 'suspended' || existingUser.status === 'deactivated') {
@@ -1040,11 +1066,11 @@ export const db = {
       existingUser.emailVerified = true;
       existingUser.isGmailVerified = true;
       existingUser.authProvider = 'google';
-      existingUser.authUid = googleUser.uid;
+      existingUser.authUid = validUid;
       if (googleUser.photoURL) existingUser.photoURL = googleUser.photoURL;
 
       setToStorage(STORAGE_KEYS.USERS, users);
-      setDoc(doc(firestoreDb, 'users', existingUser.id), existingUser, { merge: true }).catch((err) =>
+      setDoc(doc(firestoreDb, 'users', existingUser.id), sanitizeForFirestore(existingUser), { merge: true }).catch((err) =>
         handleFirestoreError(err, OperationType.UPDATE, `users/${existingUser.id}`)
       );
 
@@ -1097,6 +1123,10 @@ export const db = {
     currencySymbol?: string;
     logoUrl?: string;
   }): Promise<{ user: User; business: Business }> {
+    if (!data.googleUser || !data.googleUser.uid || typeof data.googleUser.uid !== 'string' || !data.googleUser.uid.trim()) {
+      throw new Error('Google Authentication required: missing authentic user UID. Please authenticate with Google first.');
+    }
+
     return this.registerBusiness({
       ownerName: data.googleUser.displayName || data.googleUser.email.split('@')[0],
       businessName: data.businessName,
@@ -1107,7 +1137,7 @@ export const db = {
       currencySymbol: data.currencySymbol,
       logoUrl: data.logoUrl || data.googleUser.photoURL,
       authProvider: 'google',
-      authUid: data.googleUser.uid,
+      authUid: data.googleUser.uid.trim(),
       photoURL: data.googleUser.photoURL,
     });
   },
