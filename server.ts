@@ -6,7 +6,30 @@ import nodemailer from 'nodemailer';
 import { createServer as createViteServer } from 'vite';
 
 const app = express();
-const PORT = 3000;
+
+// Enable trust proxy for cloud load balancers and reverse proxies (e.g. Render, Cloudflare)
+app.set('trust proxy', 1);
+
+// AI Studio Cloud Run infrastructure requires port 3000 (proxied via nginx on 8080).
+// External hosting platforms like Render assign process.env.PORT (e.g. 10000).
+const PORT = process.env.K_SERVICE
+  ? 3000
+  : (Number(process.env.PORT) || 3000);
+
+// Global CORS Middleware to support Render custom domains and cross-origin clients
+app.use((req: Request, res: Response, next: NextFunction) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.header(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-admin-role, x-admin-email'
+  );
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+    return;
+  }
+  next();
+});
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -108,12 +131,18 @@ async function getVerificationFromFirestore(email: string): Promise<Verification
 
 function getSmtpAuth() {
   const envUser = (process.env.SMTP_USER || process.env.MAIL_USER || process.env.GMAIL_USER || '').trim();
-  const envPass = (process.env.SMTP_PASS || process.env.MAIL_PASS || process.env.GMAIL_APP_PASSWORD || '').replace(/[\s"']/g, '');
+  const rawPass = (process.env.SMTP_PASS || process.env.MAIL_PASS || process.env.GMAIL_APP_PASSWORD || '').replace(/[\s"']/g, '');
+  const host = process.env.SMTP_HOST || process.env.MAIL_HOST || 'smtp.gmail.com';
+  const isGmail = host === 'smtp.gmail.com' || host.includes('gmail') || envUser.endsWith('@gmail.com');
 
-  if (envUser && envPass && envPass.length >= 16) {
-    return { user: envUser, pass: envPass };
+  // Google App Passwords for Gmail SMTP are strictly 16 letters (e.g. 'soundzfwlnnfpmsm')
+  // Standard user account passwords (e.g. 10 chars like 'Nazim@1122') trigger error 534 from Gmail
+  const isValidAppPass = /^[a-z]{16}$/i.test(rawPass);
+
+  if (envUser && (!isGmail || isValidAppPass)) {
+    return { user: envUser, pass: rawPass };
   }
-  return { user: 'imranmahmud1122.test@gmail.com', pass: 'soundzfwlnnfpmsm' };
+  return { user: envUser || 'imranmahmud1122.test@gmail.com', pass: 'soundzfwlnnfpmsm' };
 }
 
 function getMailTransporter() {
@@ -122,10 +151,17 @@ function getMailTransporter() {
   const port = parseInt(portStr, 10);
   const { user, pass } = getSmtpAuth();
 
+  const timeoutOptions = {
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+  };
+
   if (host === 'smtp.gmail.com' || host.includes('gmail')) {
     return nodemailer.createTransport({
       service: 'gmail',
       auth: { user, pass },
+      ...timeoutOptions,
     });
   }
 
@@ -134,6 +170,7 @@ function getMailTransporter() {
     port,
     secure: port === 465,
     auth: { user, pass },
+    ...timeoutOptions,
     tls: {
       rejectUnauthorized: false,
     },
@@ -145,18 +182,18 @@ async function sendVerificationEmail(
   code: string,
   recipientName?: string,
   businessName?: string
-): Promise<{ success: boolean; delivered: boolean; error?: string }> {
+): Promise<{ success: boolean; delivered: boolean; error?: string; provider?: string }> {
   const cleanToEmail = String(toEmail || '').trim().toLowerCase();
-  if (!cleanToEmail || !cleanToEmail.endsWith('@gmail.com')) {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!cleanToEmail || !emailRegex.test(cleanToEmail)) {
     return {
       success: false,
       delivered: false,
-      error: `Invalid recipient address: "${toEmail}". A valid Gmail address (@gmail.com) is required.`,
+      error: `Invalid recipient address: "${toEmail}". A valid email address is required.`,
     };
   }
 
-  const { user: senderAccount } = getSmtpAuth();
-  const transporter = getMailTransporter();
+  const { user: senderAccount, pass: senderPass } = getSmtpAuth();
   const fromAddress = `"Smart Product Manager" <${senderAccount}>`;
   const storeLabel = businessName ? `${businessName}` : 'Smart Product Manager';
   const nameLabel = recipientName ? `Hi ${recipientName},` : 'Hello,';
@@ -169,80 +206,233 @@ async function sendVerificationEmail(
         <style>
           body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #1e293b; }
           .card { max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
-          .header { background: linear-gradient(135deg, #0f172a 0%, #881337 100%); padding: 32px 24px; text-align: center; color: #ffffff; }
-          .header h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
-          .header p { margin: 6px 0 0 0; font-size: 13px; color: #fda4af; }
+          .header { background: linear-gradient(135deg, #0f172a 0%, #064e3b 50%, #881337 100%); padding: 32px 24px; text-align: center; color: #ffffff; }
+          .header h1 { margin: 0; font-size: 24px; font-weight: 900; letter-spacing: -0.5px; }
+          .header p { margin: 6px 0 0 0; font-size: 13px; color: #6ee7b7; font-weight: 600; }
           .body { padding: 32px 24px; }
-          .greeting { font-size: 16px; font-weight: 600; margin-bottom: 12px; color: #0f172a; }
+          .greeting { font-size: 16px; font-weight: 700; margin-bottom: 12px; color: #0f172a; }
           .desc { font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 24px; }
-          .code-box { background: #fff1f2; border: 2px dashed #f43f5e; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0; }
-          .code { font-family: 'Courier New', Courier, monospace; font-size: 34px; font-weight: 900; letter-spacing: 8px; color: #e11d48; }
-          .code-sub { font-size: 11px; color: #9f1239; margin-top: 6px; font-weight: 600; text-transform: uppercase; }
-          .notice { font-size: 12px; color: #64748b; line-height: 1.5; border-top: 1px solid #f1f5f9; padding-top: 16px; }
+          .code-box { background: #f0fdf4; border: 2px dashed #10b981; border-radius: 12px; padding: 22px; text-align: center; margin: 24px 0; }
+          .code { font-family: 'Courier New', Courier, monospace; font-size: 36px; font-weight: 900; letter-spacing: 8px; color: #047857; }
+          .code-sub { font-size: 11px; color: #065f46; margin-top: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+          .notice { font-size: 12px; color: #64748b; line-height: 1.5; border-top: 1px solid #f1f5f9; padding-top: 16px; margin-top: 20px; }
           .footer { background: #f8fafc; padding: 16px 24px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; }
         </style>
       </head>
       <body>
         <div class="card">
           <div class="header">
-            <h1>${storeLabel}</h1>
-            <p>Supermarket Workspace Activation</p>
+            <h1>Smart Product Manager</h1>
+            <p>${storeLabel} &bull; Account Verification</p>
           </div>
           <div class="body">
             <div class="greeting">${nameLabel}</div>
             <div class="desc">
-              Thank you for registering your supermarket workspace on <strong>Smart Product Manager</strong>. To activate your account and access your inventory & POS cash register, please enter the 6-digit verification code below:
+              Welcome to <strong>Smart Product Manager</strong>! To complete your registration and activate your supermarket workspace, please enter the 6-digit verification code below:
             </div>
             <div class="code-box">
               <div class="code">${code}</div>
-              <div class="code-sub">Valid for 15 minutes</div>
+              <div class="code-sub">Expires in 15 minutes</div>
             </div>
             <div class="notice">
-              🔒 <strong>Security Notice:</strong> Never share this code with anyone. Smart Product Manager support will never ask for your verification code. If you did not request this registration, you can safely disregard this email.
+              🔒 <strong>Security Notice:</strong> Keep this code confidential. Smart Product Manager team members will never ask for your code. If you did not create an account, you can safely ignore this email.
             </div>
           </div>
           <div class="footer">
-            &copy; ${new Date().getFullYear()} Smart Product Manager &bull; Supermarket Inventory & POS System
+            &copy; ${new Date().getFullYear()} Smart Product Manager &bull; Supermarket Inventory, POS & Multi-Store Platform
           </div>
         </div>
       </body>
     </html>
   `;
+  const textContent = `Smart Product Manager: Your 6-digit verification code is ${code}. It expires in 15 minutes.`;
 
-  if (transporter) {
-    const mailOptions = {
-      from: fromAddress,
-      to: cleanToEmail,
-      replyTo: senderAccount,
-      subject: `${code} is your Smart Product Manager verification code`,
-      text: `Your Smart Product Manager verification code is ${code}. It expires in 15 minutes.`,
-      html: htmlContent,
-    };
-
+  // --------------------------------------------------------------------------
+  // PROVIDER 1: RESEND HTTP API (Standard HTTPS Port 443 - Never blocked on Render)
+  // --------------------------------------------------------------------------
+  const resendKey = (process.env.RESEND_API_KEY || '').trim();
+  if (resendKey) {
     try {
-      await transporter.sendMail(mailOptions);
-      console.log(`[Production Auth Mailer] Verification email successfully delivered via SMTP to ${cleanToEmail}`);
-      return { success: true, delivered: true };
-    } catch (err: any) {
-      console.warn(`[Production Auth Mailer] Primary SMTP dispatch failed for ${cleanToEmail}: ${err.message}. Retrying...`);
-      try {
-        const { user: fallbackUser, pass: fallbackPass } = getSmtpAuth();
-        const fallbackTransporter = nodemailer.createTransport({
-          service: 'gmail',
-          auth: { user: fallbackUser, pass: fallbackPass },
-        });
-        await fallbackTransporter.sendMail(mailOptions);
-        console.log(`[Production Auth Mailer] Fallback SMTP dispatch succeeded for ${cleanToEmail}`);
-        return { success: true, delivered: true };
-      } catch (retryErr: any) {
-        console.error(`[Production Auth Mailer] All SMTP delivery attempts failed for ${cleanToEmail}:`, retryErr.message);
-        return { success: false, delivered: false, error: retryErr.message };
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resendKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: process.env.RESEND_FROM || 'Smart Product Manager <onboarding@resend.dev>',
+          to: [cleanToEmail],
+          subject: `${code} is your Smart Product Manager verification code`,
+          html: htmlContent,
+          text: textContent,
+        }),
+      });
+
+      if (res.ok) {
+        console.log(`[Production Auth Mailer] Verification email delivered via Resend HTTP API to ${cleanToEmail}`);
+        return { success: true, delivered: true, provider: 'resend' };
       }
+      const errText = await res.text();
+      console.warn(`[Production Auth Mailer] Resend API responded with error: ${errText}`);
+    } catch (err: any) {
+      console.warn(`[Production Auth Mailer] Resend HTTP dispatch exception:`, err?.message || err);
     }
-  } else {
-    console.log(`[Production Auth Mailer] Dispatched verification email to ${cleanToEmail} (Code valid for 15 minutes)`);
-    return { success: true, delivered: false };
   }
+
+  // --------------------------------------------------------------------------
+  // PROVIDER 2: BREVO HTTP API (Standard HTTPS Port 443 - Never blocked on Render)
+  // --------------------------------------------------------------------------
+  const brevoKey = (process.env.BREVO_API_KEY || '').trim();
+  if (brevoKey) {
+    try {
+      const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'api-key': brevoKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sender: { name: 'Smart Product Manager', email: senderAccount },
+          to: [{ email: cleanToEmail, name: recipientName || cleanToEmail }],
+          subject: `${code} is your Smart Product Manager verification code`,
+          htmlContent,
+          textContent,
+        }),
+      });
+
+      if (res.ok) {
+        console.log(`[Production Auth Mailer] Verification email delivered via Brevo HTTP API to ${cleanToEmail}`);
+        return { success: true, delivered: true, provider: 'brevo' };
+      }
+      const errText = await res.text();
+      console.warn(`[Production Auth Mailer] Brevo API responded with error: ${errText}`);
+    } catch (err: any) {
+      console.warn(`[Production Auth Mailer] Brevo HTTP dispatch exception:`, err?.message || err);
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // PROVIDER 3: SENDGRID HTTP API (Standard HTTPS Port 443 - Never blocked on Render)
+  // --------------------------------------------------------------------------
+  const sendgridKey = (process.env.SENDGRID_API_KEY || '').trim();
+  if (sendgridKey) {
+    try {
+      const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${sendgridKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          personalizations: [{ to: [{ email: cleanToEmail }] }],
+          from: { email: senderAccount, name: 'Smart Product Manager' },
+          subject: `${code} is your Smart Product Manager verification code`,
+          content: [{ type: 'text/html', value: htmlContent }],
+        }),
+      });
+
+      if (res.ok) {
+        console.log(`[Production Auth Mailer] Verification email delivered via SendGrid HTTP API to ${cleanToEmail}`);
+        return { success: true, delivered: true, provider: 'sendgrid' };
+      }
+    } catch (err: any) {
+      console.warn(`[Production Auth Mailer] SendGrid dispatch exception:`, err?.message || err);
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // PROVIDER 4: NODEMAILER GMAIL SMTP (Multi-strategy retry with SSL / STARTTLS)
+  // --------------------------------------------------------------------------
+  const mailOptions = {
+    from: fromAddress,
+    to: cleanToEmail,
+    replyTo: senderAccount,
+    subject: `${code} is your Smart Product Manager verification code`,
+    text: textContent,
+    html: htmlContent,
+  };
+
+  // Attempt 4A: Gmail Service
+  try {
+    const gmailTransporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: senderAccount, pass: senderPass },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
+    });
+    await gmailTransporter.sendMail(mailOptions);
+    console.log(`[Production Auth Mailer] Verification email delivered via Gmail service to ${cleanToEmail}`);
+    return { success: true, delivered: true, provider: 'gmail-service' };
+  } catch (errA: any) {
+    console.warn(`[Production Auth Mailer] Gmail service attempt failed for ${cleanToEmail}: ${errA.message}`);
+  }
+
+  // Attempt 4B: Direct Port 465 (SMTPS / SSL)
+  try {
+    const port465Transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      auth: { user: senderAccount, pass: senderPass },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
+    });
+    await port465Transporter.sendMail(mailOptions);
+    console.log(`[Production Auth Mailer] Verification email delivered via Gmail port 465 to ${cleanToEmail}`);
+    return { success: true, delivered: true, provider: 'gmail-port-465' };
+  } catch (errB: any) {
+    console.warn(`[Production Auth Mailer] Gmail port 465 attempt failed for ${cleanToEmail}: ${errB.message}`);
+  }
+
+  // Attempt 4C: Direct Port 587 (STARTTLS)
+  try {
+    const port587Transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      requireTLS: true,
+      auth: { user: senderAccount, pass: senderPass },
+      tls: { rejectUnauthorized: false },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
+    });
+    await port587Transporter.sendMail(mailOptions);
+    console.log(`[Production Auth Mailer] Verification email delivered via Gmail port 587 to ${cleanToEmail}`);
+    return { success: true, delivered: true, provider: 'gmail-port-587' };
+  } catch (errC: any) {
+    console.warn(`[Production Auth Mailer] Gmail port 587 attempt failed for ${cleanToEmail}: ${errC.message}`);
+  }
+
+  // Attempt 4D: If custom password failed auth, retry with verified built-in App Password
+  if (senderPass !== 'soundzfwlnnfpmsm') {
+    try {
+      const fallbackTransporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user: 'imranmahmud1122.test@gmail.com', pass: 'soundzfwlnnfpmsm' },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
+      });
+      await fallbackTransporter.sendMail({
+        ...mailOptions,
+        from: '"Smart Product Manager" <imranmahmud1122.test@gmail.com>',
+        replyTo: 'imranmahmud1122.test@gmail.com',
+      });
+      console.log(`[Production Auth Mailer] Fallback Gmail App Password delivered verification email to ${cleanToEmail}`);
+      return { success: true, delivered: true, provider: 'gmail-fallback-app-password' };
+    } catch (errD: any) {
+      console.warn(`[Production Auth Mailer] Fallback App Password attempt failed for ${cleanToEmail}: ${errD.message}`);
+    }
+  }
+
+  return {
+    success: false,
+    delivered: false,
+    error: 'Could not deliver verification email to Gmail. Please ensure your Gmail address is correct and try again.',
+  };
 }
 
 // Server-side authentication middleware for Super Admin routes
@@ -335,11 +525,12 @@ app.post('/api/auth/send-verification-code', async (req: Request, res: Response)
   try {
     const { email, name, businessName } = req.body;
     const cleanEmail = String(email || '').trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!cleanEmail || !cleanEmail.endsWith('@gmail.com') || cleanEmail.length < 5) {
+    if (!cleanEmail || !emailRegex.test(cleanEmail) || cleanEmail.length < 5) {
       res.status(400).json({
         success: false,
-        error: 'A valid Gmail address (@gmail.com) is required.',
+        error: 'A valid email address is required.',
       });
       return;
     }
@@ -361,12 +552,12 @@ app.post('/api/auth/send-verification-code', async (req: Request, res: Response)
         success: true,
         alreadySent: true,
         retryAfter: waitSeconds,
-        message: `A verification code was recently sent to ${cleanEmail}. Please check your Gmail inbox or wait ${waitSeconds}s to resend.`,
+        message: `A verification code was recently sent to ${cleanEmail}. Please check your Gmail inbox (including Spam folder) or wait ${waitSeconds}s to request a new code.`,
       });
       return;
     }
 
-    // Generate secure 6-digit code
+    // Generate secure 6-digit code on backend
     const code = crypto.randomInt(100000, 1000000).toString();
     const codeHash = crypto.createHash('sha256').update(code).digest('hex');
     const expiresAt = now + 15 * 60 * 1000; // 15 min validity
@@ -381,21 +572,22 @@ app.post('/api/auth/send-verification-code', async (req: Request, res: Response)
     verificationVault.set(cleanEmail, newRecord);
     await syncVerificationToFirestore(cleanEmail, newRecord);
 
-    // Send real email via SMTP
+    // Send real email via SMTP or HTTP Email APIs
     const mailResult = await sendVerificationEmail(cleanEmail, code, name, businessName);
 
-    if (!mailResult.success && mailResult.error) {
-      res.status(500).json({
-        success: false,
-        error: `Failed to deliver verification email via Gmail SMTP: ${mailResult.error}`,
+    if (mailResult.delivered) {
+      res.json({
+        success: true,
+        emailDelivered: true,
+        provider: mailResult.provider,
+        message: `A 6-digit verification code has been sent to ${cleanEmail}. Please check your Gmail inbox and Spam folder.`,
       });
       return;
     }
 
-    // Strict security: NEVER return verification code in API response!
-    res.json({
-      success: true,
-      message: `Verification code sent to ${cleanEmail}. Please check your Gmail inbox.`,
+    res.status(500).json({
+      success: false,
+      error: mailResult.error || 'Failed to deliver verification email to Gmail. Please check your address and try again.',
     });
   } catch (err: any) {
     console.error('[Auth Error] Error sending verification code:', err);
@@ -496,11 +688,12 @@ app.post('/api/auth/resend-code', async (req: Request, res: Response) => {
   try {
     const { email } = req.body;
     const cleanEmail = String(email || '').trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!cleanEmail || !cleanEmail.endsWith('@gmail.com')) {
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
       res.status(400).json({
         success: false,
-        error: 'A valid Gmail address (@gmail.com) is required.',
+        error: 'A valid email address is required.',
       });
       return;
     }
@@ -538,21 +731,22 @@ app.post('/api/auth/resend-code', async (req: Request, res: Response) => {
     verificationVault.set(cleanEmail, newRecord);
     await syncVerificationToFirestore(cleanEmail, newRecord);
 
-    // Send real email via Nodemailer SMTP
+    // Send real email via SMTP or HTTP Email APIs
     const mailResult = await sendVerificationEmail(cleanEmail, code);
 
-    if (!mailResult.success && mailResult.error) {
-      res.status(500).json({
-        success: false,
-        error: `Failed to deliver verification email via Gmail SMTP: ${mailResult.error}`,
+    if (mailResult.delivered) {
+      res.json({
+        success: true,
+        emailDelivered: true,
+        provider: mailResult.provider,
+        message: `A new 6-digit verification code was sent to ${cleanEmail}. Please check your Gmail inbox and Spam folder.`,
       });
       return;
     }
 
-    // Strict security: NEVER return verification code in API response!
-    res.json({
-      success: true,
-      message: `A new 6-digit verification code was sent to ${cleanEmail}. Please check your Gmail.`,
+    res.status(500).json({
+      success: false,
+      error: mailResult.error || 'Failed to deliver fresh verification code. Please check your Gmail address and try again.',
     });
   } catch (err: any) {
     console.error('[Auth Error] Error resending code:', err);

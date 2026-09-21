@@ -14,6 +14,9 @@ export interface User {
   verificationCode?: string;
   verificationExpiresAt?: string;
   isGmailVerified?: boolean;
+  authProvider?: 'google' | 'password';
+  authUid?: string;
+  photoURL?: string;
 }
 
 export interface Business {

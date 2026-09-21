@@ -11,8 +11,8 @@ import { User, Business, Product } from './types';
 import { PublicLanding } from './components/public/PublicLanding';
 import { LoginModal } from './components/auth/LoginModal';
 import { RegisterBusinessModal } from './components/auth/RegisterBusinessModal';
-import { GmailVerificationModal } from './components/auth/GmailVerificationModal';
 import { BusinessLayout } from './components/layout/BusinessLayout';
+import { GoogleAuthResult } from './services/firebase';
 import { BusinessDashboard } from './components/dashboard/BusinessDashboard';
 import { ProductList } from './components/products/ProductList';
 import { AddEditProductModal } from './components/products/AddEditProductModal';
@@ -56,14 +56,8 @@ export default function App() {
   // Force public view mode when logged in
   const [isViewingPublicMode, setIsViewingPublicMode] = useState(false);
 
-  // Mandatory Gmail Verification Modal state
-  const [verificationState, setVerificationState] = useState<{
-    isOpen: boolean;
-    email: string;
-  }>({
-    isOpen: false,
-    email: '',
-  });
+  // Prefilled Google User for registration modal
+  const [prefillGoogleUser, setPrefillGoogleUser] = useState<GoogleAuthResult | null>(null);
 
   // Initialize from storage & sync
   useEffect(() => {
@@ -72,14 +66,6 @@ export default function App() {
     const refreshSession = () => {
       const user = db.getCurrentUser();
       if (user) {
-        if (user.status === 'pending' || user.emailVerified === false) {
-          // Account is inactive pending verification
-          db.logout();
-          setCurrentUser(null);
-          setCurrentBusiness(null);
-          return;
-        }
-
         setCurrentUser((prev) => {
           if (
             !prev ||
@@ -117,13 +103,6 @@ export default function App() {
   }, []);
 
   const handleLoginSuccess = (user: User) => {
-    if (user.status === 'pending' || user.emailVerified === false) {
-      setVerificationState({
-        isOpen: true,
-        email: user.email,
-      });
-      return;
-    }
     setCurrentUser(user);
     if (user.businessId) {
       const biz = db.getBusinessById(user.businessId);
@@ -137,34 +116,9 @@ export default function App() {
   };
 
   const handleRegisterSuccess = (business: Business, user: User) => {
-    if (user.status === 'pending' || user.emailVerified === false) {
-      setVerificationState({
-        isOpen: true,
-        email: user.email,
-      });
-      return;
-    }
     setCurrentUser(user);
     setCurrentBusiness(business);
     setIsRegisterOpen(false);
-    setIsViewingPublicMode(false);
-    setActiveTab('dashboard');
-  };
-
-  const handleRequireGmailVerification = (email: string) => {
-    setIsRegisterOpen(false);
-    setIsLoginOpen(false);
-    setVerificationState({
-      isOpen: true,
-      email,
-    });
-  };
-
-  const handleGmailVerified = (verifiedUser: User, verifiedBusiness: Business) => {
-    setVerificationState({ isOpen: false, email: '' });
-    db.setCurrentUser(verifiedUser);
-    setCurrentUser(verifiedUser);
-    setCurrentBusiness(verifiedBusiness);
     setIsViewingPublicMode(false);
     setActiveTab('dashboard');
   };
@@ -200,8 +154,14 @@ export default function App() {
     return (
       <>
         <PublicLanding
-          onOpenLogin={() => setIsLoginOpen(true)}
-          onOpenRegister={() => setIsRegisterOpen(true)}
+          onOpenLogin={() => {
+            setPrefillGoogleUser(null);
+            setIsLoginOpen(true);
+          }}
+          onOpenRegister={() => {
+            setPrefillGoogleUser(null);
+            setIsRegisterOpen(true);
+          }}
           currentUser={currentUser}
           onReturnToDashboard={currentUser ? () => setIsViewingPublicMode(false) : undefined}
         />
@@ -210,33 +170,28 @@ export default function App() {
           isOpen={isLoginOpen}
           onClose={() => setIsLoginOpen(false)}
           onSuccess={handleLoginSuccess}
-          onSwitchToRegister={() => {
+          onSwitchToRegister={(googleAuth) => {
             setIsLoginOpen(false);
+            if (googleAuth) {
+              setPrefillGoogleUser(googleAuth);
+            }
             setIsRegisterOpen(true);
           }}
-          onRequireGmailVerification={handleRequireGmailVerification}
         />
 
         <RegisterBusinessModal
           isOpen={isRegisterOpen}
-          onClose={() => setIsRegisterOpen(false)}
+          onClose={() => {
+            setIsRegisterOpen(false);
+            setPrefillGoogleUser(null);
+          }}
           onSuccess={handleRegisterSuccess}
           onSwitchToLogin={() => {
             setIsRegisterOpen(false);
+            setPrefillGoogleUser(null);
             setIsLoginOpen(true);
           }}
-          onRequireGmailVerification={handleRequireGmailVerification}
-        />
-
-        <GmailVerificationModal
-          isOpen={verificationState.isOpen}
-          onClose={() => setVerificationState((prev) => ({ ...prev, isOpen: false }))}
-          initialEmail={verificationState.email}
-          onVerified={handleGmailVerified}
-          onSwitchToLogin={() => {
-            setVerificationState((prev) => ({ ...prev, isOpen: false }));
-            setIsLoginOpen(true);
-          }}
+          prefillGoogleUser={prefillGoogleUser}
         />
       </>
     );

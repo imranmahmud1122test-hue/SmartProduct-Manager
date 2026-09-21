@@ -230,45 +230,185 @@ export async function downloadHtmlAsPDF(htmlContent: string, filename: string = 
 
 /**
  * Executes a clean, isolated print job.
- * This completely isolates the print document from the host web app,
- * preventing modal dark backdrops, background page bleed, or cut-offs.
- * It directly triggers the browser's native print preview dialog (Save as PDF / Printer).
+ * Completely isolates the print document from the host web app and iframe wrappers,
+ * ensuring only the target invoice, receipt, packing slip, or report is printed.
  */
 export function printDocument(htmlContent: string, title: string = 'Document'): void {
-  let mount = document.getElementById('spm-print-mount');
-  if (!mount) {
-    mount = document.createElement('div');
-    mount.id = 'spm-print-mount';
-    document.body.appendChild(mount);
+  const fullHtml = `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${title}</title>
+    <style>
+      @page {
+        margin: 6mm;
+        size: auto;
+      }
+      *, *::before, *::after {
+        box-sizing: border-box;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      body {
+        margin: 0;
+        padding: 16px;
+        background-color: #ffffff !important;
+        color: #0f172a !important;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      img, svg, canvas {
+        max-width: 100%;
+        page-break-inside: avoid;
+      }
+      @media print {
+        body {
+          padding: 0 !important;
+          margin: 0 !important;
+        }
+        .no-print {
+          display: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="no-print" style="position: sticky; top: 0; left: 0; right: 0; background: #0f172a; color: #ffffff; padding: 10px 16px; margin: -16px -16px 16px -16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 99999;">
+      <div style="font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 8px;">
+        <span>📄 ${title}</span>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button onclick="window.print()" style="padding: 6px 14px; background: #059669; color: #ffffff; border: none; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+          🖨️ Print / Save as PDF
+        </button>
+        <button onclick="window.close()" style="padding: 6px 12px; background: #334155; color: #ffffff; border: none; border-radius: 6px; font-weight: 600; font-size: 12px; cursor: pointer;">
+          ✕ Close
+        </button>
+      </div>
+    </div>
+    ${htmlContent}
+    <script>
+      window.addEventListener('load', function() {
+        setTimeout(function() {
+          try {
+            window.focus();
+            window.print();
+          } catch(e) {
+            console.warn('Auto print failed:', e);
+          }
+        }, 350);
+      });
+    </script>
+  </body>
+</html>`;
+
+  // Strategy 1: Open clean popup window (outside of any AI Studio iframe)
+  try {
+    const printWin = window.open('', '_blank', 'width=900,height=950,menubar=no,toolbar=no,location=no,status=no');
+    if (printWin && !printWin.closed) {
+      printWin.document.open();
+      printWin.document.write(fullHtml);
+      printWin.document.close();
+      return;
+    }
+  } catch (winErr) {
+    console.warn('Direct popup blocked, trying Blob URL strategy:', winErr);
   }
-  mount.innerHTML = htmlContent;
 
-  document.body.classList.add('is-printing-isolated');
-  const prevTitle = document.title;
-  document.title = title;
+  // Strategy 2: Blob URL in a new tab
+  try {
+    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+    const blobUrl = URL.createObjectURL(blob);
+    const blobWin = window.open(blobUrl, '_blank');
+    if (blobWin) {
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+      return;
+    }
+  } catch (blobErr) {
+    console.warn('Blob URL strategy failed, falling back to in-app printable overlay:', blobErr);
+  }
 
-  let cleanedUp = false;
-  const cleanup = () => {
-    if (cleanedUp) return;
-    cleanedUp = true;
-    document.body.classList.remove('is-printing-isolated');
-    document.title = prevTitle;
-    window.removeEventListener('afterprint', cleanup);
-  };
+  // Strategy 3: In-app Printable Modal Overlay
+  showInAppPrintOverlay(htmlContent, title);
+}
 
-  window.addEventListener('afterprint', cleanup);
+/**
+ * Clean in-app printable modal overlay fallback if popups are blocked by browser iframe policies
+ */
+function showInAppPrintOverlay(htmlContent: string, title: string): void {
+  const existing = document.getElementById('spm-print-overlay-root');
+  if (existing) {
+    existing.remove();
+  }
 
-  // Directly trigger native window.print()
-  setTimeout(() => {
-    try {
+  const overlay = document.createElement('div');
+  overlay.id = 'spm-print-overlay-root';
+  overlay.style.cssText = `
+    position: fixed;
+    inset: 0;
+    z-index: 999999;
+    background-color: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(4px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 16px;
+    overflow-y: auto;
+  `;
+
+  overlay.innerHTML = `
+    <div style="width: 100%; max-width: 800px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; color: #ffffff;">
+      <div style="font-weight: 800; font-size: 16px; display: flex; align-items: center; gap: 8px;">
+        <span>🖨️ ${title}</span>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button id="spm-overlay-print-btn" style="padding: 8px 16px; background: #059669; color: #ffffff; border: none; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+          🖨️ Print Now
+        </button>
+        <button id="spm-overlay-close-btn" style="padding: 8px 14px; background: #334155; color: #ffffff; border: none; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer;">
+          ✕ Close
+        </button>
+      </div>
+    </div>
+    <div id="spm-overlay-printable-paper" style="width: 100%; max-width: 800px; background: #ffffff; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); padding: 24px; color: #0f172a; margin-bottom: 40px;">
+      ${htmlContent}
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const closeBtn = document.getElementById('spm-overlay-close-btn');
+  closeBtn?.addEventListener('click', () => overlay.remove());
+
+  const printBtn = document.getElementById('spm-overlay-print-btn');
+  printBtn?.addEventListener('click', () => {
+    // Isolate and trigger print
+    document.body.classList.add('is-printing-isolated');
+    let mount = document.getElementById('spm-print-mount');
+    if (!mount) {
+      mount = document.createElement('div');
+      mount.id = 'spm-print-mount';
+      document.body.appendChild(mount);
+    }
+    mount.innerHTML = htmlContent;
+
+    const cleanup = () => {
+      document.body.classList.remove('is-printing-isolated');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+
+    setTimeout(() => {
       window.focus();
       window.print();
-    } catch (e) {
-      console.warn('Native window.print() exception:', e);
-    }
-    // Fallback cleanup timer in case afterprint does not fire
-    setTimeout(cleanup, 3000);
-  }, 100);
+      setTimeout(cleanup, 4000);
+    }, 150);
+  });
 }
 
 /**

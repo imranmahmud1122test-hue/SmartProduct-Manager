@@ -96,6 +96,37 @@ body {
   }
 
   /* ========================================================= */
+  /* ISOLATED DOCUMENT PRINTING (Receipts, Slips, Invoices)    */
+  /* ========================================================= */
+  body.is-printing-isolated {
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    width: 100% !important;
+  }
+
+  body.is-printing-isolated #root,
+  body.is-printing-isolated > *:not(#spm-print-mount) {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  body.is-printing-isolated #spm-print-mount {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  body.is-printing-isolated #spm-print-mount * {
+    visibility: visible !important;
+  }
+
+  /* ========================================================= */
   /* POS THERMAL RECEIPT (80mm) PRINT RULES                    */
   /* ========================================================= */
   body:has(#printable-receipt),

@@ -31,11 +31,7 @@ import {
 } from './firebase';
 import { emitGlobalToast } from '../context/ToastContext';
 import { compressImageDataUrl } from '../utils/imageCompressor';
-import {
-  isGmailAddress,
-  generateGmailVerificationCode,
-  getGmailValidationMessage,
-} from '../utils/gmailValidation';
+import { apiPost } from './apiClient';
 
 function sanitizeForFirestore<T>(data: T): T {
   if (data === null || data === undefined) {
@@ -673,11 +669,20 @@ export const db = {
 
   getUsers(): User[] {
     const list = getFromStorage<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
-    const filtered = list.filter((u) => u.email.toLowerCase() !== 'cashier@metro.com' && u.id !== 'USR-METRO-CASHIER');
-    if (filtered.length !== list.length) {
-      setToStorage(STORAGE_KEYS.USERS, filtered);
+    let updated = false;
+    const sanitized = list
+      .filter((u) => u.email.toLowerCase() !== 'cashier@metro.com' && u.id !== 'USR-METRO-CASHIER')
+      .map((u) => {
+        if (u.status === 'pending' || u.emailVerified === false) {
+          updated = true;
+          return { ...u, status: 'active' as const, emailVerified: true, isGmailVerified: true };
+        }
+        return u;
+      });
+    if (updated || sanitized.length !== list.length) {
+      setToStorage(STORAGE_KEYS.USERS, sanitized);
     }
-    return filtered;
+    return sanitized;
   },
 
   addUser(userData: {
@@ -700,9 +705,9 @@ export const db = {
       businessId: userData.businessId,
       phone: userData.phone || '',
       createdAt: new Date().toISOString(),
-      status: isSuperAdmin ? 'active' : 'pending',
-      emailVerified: isSuperAdmin ? true : false,
-      isGmailVerified: isSuperAdmin ? true : false,
+      status: 'active',
+      emailVerified: true,
+      isGmailVerified: true,
     };
 
     users.push(newUser);
@@ -714,13 +719,9 @@ export const db = {
 
     // Auto-dispatch verification code for new user if pending Gmail
     if (!isSuperAdmin && cleanEmail.endsWith('@gmail.com')) {
-      fetch('/api/auth/send-verification-code', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: cleanEmail,
-          name: userData.name,
-        }),
+      apiPost('/api/auth/send-verification-code', {
+        email: cleanEmail,
+        name: userData.name,
       }).catch((err) => console.warn('Auto send verification code failed for new user:', err));
     }
 
@@ -875,14 +876,11 @@ export const db = {
     businessType?: Business['businessType'];
     logoUrl?: string;
     currencySymbol?: string;
+    authProvider?: 'google' | 'password';
+    authUid?: string;
+    photoURL?: string;
   }): Promise<{ user: User; business: Business }> {
     const cleanEmail = (data.email || '').trim().toLowerCase();
-
-    // Enforce strict Gmail address validation
-    if (!isGmailAddress(cleanEmail)) {
-      const msg = getGmailValidationMessage(cleanEmail);
-      throw new Error(msg || 'First-time registration requires a valid Gmail address (@gmail.com).');
-    }
 
     const businesses = this.getBusinesses();
     const users = this.getUsers();
@@ -914,24 +912,29 @@ export const db = {
       logoUrl: data.logoUrl || 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=200&auto=format&fit=crop&q=80',
       currencySymbol: data.currencySymbol || '৳',
       taxRate: 5.0,
-      status: 'pending', // Inactive until Gmail verification is completed
+      status: 'active', // Active immediately
       createdAt: new Date().toISOString(),
       isPublicStoreEnabled: true,
-      emailVerified: false,
+      emailVerified: true,
     };
+
+    const isSuperAdminEmail = cleanEmail === 'imranmahmud1122.test@gmail.com';
 
     const newUser: User = {
       id: userId,
       email: cleanEmail,
       name: data.ownerName,
-      role: 'business_owner',
+      role: isSuperAdminEmail ? 'super_admin' : 'business_owner',
       businessId: businessId,
       businessName: finalBusinessName,
       phone: data.phone || '',
       createdAt: new Date().toISOString(),
-      status: 'pending', // Account remains inactive until verified
-      emailVerified: false,
-      isGmailVerified: false,
+      status: 'active',
+      emailVerified: true,
+      isGmailVerified: true,
+      authProvider: data.authProvider || 'google',
+      authUid: data.authUid,
+      photoURL: data.photoURL,
     };
 
     businesses.push(newBusiness);
@@ -948,160 +951,183 @@ export const db = {
       handleFirestoreError(err, OperationType.CREATE, `users/${newUser.id}`)
     );
 
-    // Dispatch secure email verification code via backend API
-    try {
-      await fetch('/api/auth/send-verification-code', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: cleanEmail,
-          name: data.ownerName,
-          businessName: finalBusinessName,
-        }),
-      });
-    } catch (apiErr) {
-      console.warn('Backend email dispatch notification:', apiErr);
-    }
+    this.setCurrentUser(newUser);
 
     this.logAudit({
       businessId,
       businessName: finalBusinessName,
       userId,
       userName: data.ownerName,
-      userRole: 'business_owner',
-      action: 'REGISTER_BUSINESS_GMAIL_PENDING',
-      details: `New workspace registered with Gmail verification email dispatched to ${cleanEmail}: ${finalBusinessName} (${businessId})`,
+      userRole: newUser.role,
+      action: 'REGISTER_BUSINESS_SUCCESS',
+      details: `New workspace registered and activated with Google Verified Authentication: ${finalBusinessName} (${businessId}) for ${cleanEmail}`,
     });
 
     return { user: newUser, business: newBusiness };
   },
 
-  // Gmail Verification Methods
-  async verifyGmailCode(email: string, code: string): Promise<{ success: boolean; user?: User; business?: Business; error?: string }> {
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanCode = code.trim();
+  /**
+   * Authenticates or creates workspace for a user who verified with real Google Sign-In
+   */
+  async loginWithGoogle(googleUser: {
+    email: string;
+    displayName: string;
+    photoURL?: string;
+    uid: string;
+  }): Promise<{ success: boolean; user?: User; business?: Business; isNew?: boolean; error?: string }> {
+    const cleanEmail = googleUser.email.trim().toLowerCase();
     const users = this.getUsers();
-    const userIndex = users.findIndex((u) => u.email.toLowerCase() === cleanEmail);
 
-    if (userIndex === -1) {
-      return { success: false, error: 'User account not found for this Gmail address.' };
-    }
+    // Check for Super Admin predefined account
+    if (cleanEmail === 'imranmahmud1122.test@gmail.com') {
+      let superAdminUser = users.find((u) => u.email.toLowerCase() === cleanEmail);
+      if (!superAdminUser) {
+        superAdminUser = {
+          id: 'USR-ADMIN-IMRAN',
+          email: cleanEmail,
+          name: googleUser.displayName || 'Imran Mahmud',
+          role: 'super_admin',
+          businessId: null,
+          phone: '+880 1711-000000',
+          createdAt: new Date().toISOString(),
+          status: 'active',
+          emailVerified: true,
+          isGmailVerified: true,
+          authProvider: 'google',
+          authUid: googleUser.uid,
+          photoURL: googleUser.photoURL,
+        };
+        users.push(superAdminUser);
+        setToStorage(STORAGE_KEYS.USERS, users);
+      } else {
+        superAdminUser.status = 'active';
+        superAdminUser.emailVerified = true;
+        superAdminUser.isGmailVerified = true;
+        superAdminUser.authProvider = 'google';
+        superAdminUser.authUid = googleUser.uid;
+        if (googleUser.photoURL) superAdminUser.photoURL = googleUser.photoURL;
+        setToStorage(STORAGE_KEYS.USERS, users);
+      }
 
-    const user = users[userIndex];
+      setDoc(doc(firestoreDb, 'users', superAdminUser.id), superAdminUser, { merge: true }).catch((err) =>
+        handleFirestoreError(err, OperationType.UPDATE, `users/${superAdminUser.id}`)
+      );
 
-    // Already active and verified
-    if (user.status === 'active' && user.emailVerified) {
-      const biz = user.businessId ? this.getBusinessById(user.businessId) : undefined;
-      return { success: true, user, business: biz };
-    }
-
-    // Call backend API to verify the secure code
-    try {
-      const response = await fetch('/api/auth/verify-code', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail, code: cleanCode }),
+      this.setCurrentUser(superAdminUser);
+      this.logAudit({
+        businessId: null,
+        userId: superAdminUser.id,
+        userName: superAdminUser.name,
+        userRole: 'super_admin',
+        action: 'USER_LOGIN_GOOGLE',
+        details: `Super Administrator verified and authenticated via Google Account (${cleanEmail})`,
       });
 
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        return {
-          success: false,
-          error: result.error || 'Incorrect 6-digit verification code. Please check your Gmail or request a new code.',
-        };
-      }
-    } catch (apiErr: any) {
-      return {
-        success: false,
-        error: 'Unable to connect to verification service. Please check your network connection.',
-      };
+      const biz = superAdminUser.businessId ? this.getBusinessById(superAdminUser.businessId) : undefined;
+      return { success: true, user: superAdminUser, business: biz, isNew: false };
     }
 
-    // Activate User
+    // Standard business owner / staff lookup
+    const existingUser = users.find((u) => u.email.toLowerCase() === cleanEmail);
+
+    if (existingUser) {
+      if (existingUser.status === 'suspended' || existingUser.status === 'deactivated') {
+        return { success: false, error: 'Your account has been deactivated or suspended. Please contact support.' };
+      }
+
+      // Activate and update verified status
+      existingUser.status = 'active';
+      existingUser.emailVerified = true;
+      existingUser.isGmailVerified = true;
+      existingUser.authProvider = 'google';
+      existingUser.authUid = googleUser.uid;
+      if (googleUser.photoURL) existingUser.photoURL = googleUser.photoURL;
+
+      setToStorage(STORAGE_KEYS.USERS, users);
+      setDoc(doc(firestoreDb, 'users', existingUser.id), existingUser, { merge: true }).catch((err) =>
+        handleFirestoreError(err, OperationType.UPDATE, `users/${existingUser.id}`)
+      );
+
+      let biz: Business | undefined;
+      if (existingUser.businessId) {
+        biz = this.getBusinessById(existingUser.businessId);
+        if (biz && biz.status !== 'active') {
+          biz.status = 'active';
+          biz.emailVerified = true;
+          setDoc(doc(firestoreDb, 'businesses', biz.id), { status: 'active', emailVerified: true }, { merge: true }).catch((err) =>
+            handleFirestoreError(err, OperationType.UPDATE, `businesses/${biz?.id}`)
+          );
+        }
+      }
+
+      this.setCurrentUser(existingUser);
+      this.logAudit({
+        businessId: existingUser.businessId,
+        userId: existingUser.id,
+        userName: existingUser.name,
+        userRole: existingUser.role,
+        action: 'USER_LOGIN_GOOGLE',
+        details: `User verified and logged in via Google Account (${cleanEmail})`,
+      });
+
+      return { success: true, user: existingUser, business: biz, isNew: false };
+    }
+
+    // New Google User - Needs Store / Business Registration
+    return {
+      success: true,
+      isNew: true,
+    };
+  },
+
+  /**
+   * Registers a brand new Business and Owner authenticated directly by real Google OAuth
+   */
+  async registerBusinessWithGoogle(data: {
+    googleUser: {
+      email: string;
+      displayName: string;
+      photoURL?: string;
+      uid: string;
+    };
+    businessName: string;
+    phone?: string;
+    address?: string;
+    businessType?: Business['businessType'];
+    currencySymbol?: string;
+    logoUrl?: string;
+  }): Promise<{ user: User; business: Business }> {
+    return this.registerBusiness({
+      ownerName: data.googleUser.displayName || data.googleUser.email.split('@')[0],
+      businessName: data.businessName,
+      email: data.googleUser.email,
+      phone: data.phone,
+      address: data.address,
+      businessType: data.businessType,
+      currencySymbol: data.currencySymbol,
+      logoUrl: data.logoUrl || data.googleUser.photoURL,
+      authProvider: 'google',
+      authUid: data.googleUser.uid,
+      photoURL: data.googleUser.photoURL,
+    });
+  },
+
+  // Backward compatible stub
+  async verifyGmailCode(email: string, code: string): Promise<{ success: boolean; user?: User; business?: Business; error?: string }> {
+    const cleanEmail = email.trim().toLowerCase();
+    const users = this.getUsers();
+    const user = users.find((u) => u.email.toLowerCase() === cleanEmail);
+    if (!user) return { success: false, error: 'User not found' };
     user.status = 'active';
     user.emailVerified = true;
     user.isGmailVerified = true;
-    user.verificationCode = undefined;
-    user.verificationExpiresAt = undefined;
-    users[userIndex] = user;
-    setToStorage(STORAGE_KEYS.USERS, users);
-
-    // Activate Business Workspace if applicable
-    let activatedBiz: Business | undefined;
-    if (user.businessId) {
-      const businesses = this.getBusinesses();
-      const bizIndex = businesses.findIndex((b) => b.id === user.businessId);
-      if (bizIndex !== -1) {
-        businesses[bizIndex].status = 'active';
-        businesses[bizIndex].emailVerified = true;
-        setToStorage(STORAGE_KEYS.BUSINESSES, businesses);
-        activatedBiz = businesses[bizIndex];
-        setDoc(doc(firestoreDb, 'businesses', businesses[bizIndex].id), { status: 'active', emailVerified: true }, { merge: true }).catch((err) =>
-          handleFirestoreError(err, OperationType.UPDATE, `businesses/${businesses[bizIndex].id}`)
-        );
-      }
-    }
-
-    // Sync user activation to Firestore
-    setDoc(doc(firestoreDb, 'users', user.id), { status: 'active', emailVerified: true, isGmailVerified: true, verificationCode: null, verificationExpiresAt: null }, { merge: true }).catch((err) =>
-      handleFirestoreError(err, OperationType.UPDATE, `users/${user.id}`)
-    );
-
-    // Set current active user session
     this.setCurrentUser(user);
-
-    this.logAudit({
-      businessId: user.businessId,
-      userId: user.id,
-      userName: user.name,
-      userRole: user.role,
-      action: 'GMAIL_VERIFICATION_SUCCESS',
-      details: `Gmail verification confirmed for ${user.email}. Account and workspace activated.`,
-    });
-
-    return { success: true, user, business: activatedBiz };
+    const biz = user.businessId ? this.getBusinessById(user.businessId) : undefined;
+    return { success: true, user, business: biz };
   },
 
   async resendGmailCode(email: string): Promise<{ success: boolean; message?: string; error?: string }> {
-    const cleanEmail = email.trim().toLowerCase();
-    const users = this.getUsers();
-    const userIndex = users.findIndex((u) => u.email.toLowerCase() === cleanEmail);
-
-    if (userIndex === -1) {
-      return { success: false, error: 'No account registered with this Gmail address.' };
-    }
-
-    try {
-      const response = await fetch('/api/auth/resend-code', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail }),
-      });
-
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        return {
-          success: false,
-          error: result.error || 'Unable to resend verification code. Please try again shortly.',
-        };
-      }
-
-      this.logAudit({
-        businessId: users[userIndex].businessId,
-        userId: users[userIndex].id,
-        userName: users[userIndex].name,
-        userRole: users[userIndex].role,
-        action: 'RESEND_GMAIL_VERIFICATION',
-        details: `New Gmail verification code dispatched to ${cleanEmail}`,
-      });
-
-      return { success: true, message: result.message };
-    } catch (e: any) {
-      return {
-        success: false,
-        error: 'Network error while contacting email service.',
-      };
-    }
+    return { success: true, message: 'Google Authentication active. No code required.' };
   },
 
   getPendingGmailVerification(email: string): { user: User } | null {

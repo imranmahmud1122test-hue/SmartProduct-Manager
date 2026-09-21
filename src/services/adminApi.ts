@@ -4,8 +4,14 @@
  */
 
 import { User } from '../types';
+import { getApiBaseUrl } from './apiClient';
 
 let cachedToken: string | null = null;
+
+function resolveAdminUrl(path: string): string {
+  const base = getApiBaseUrl();
+  return path.startsWith('http') ? path : `${base}${path.startsWith('/') ? path : `/${path}`}`;
+}
 
 export const adminApi = {
   /**
@@ -21,7 +27,7 @@ export const adminApi = {
     }
 
     try {
-      const response = await fetch('/api/auth/verify-superadmin', {
+      const response = await fetch(resolveAdminUrl('/api/auth/verify-superadmin'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -68,7 +74,7 @@ export const adminApi = {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await fetch(`/api/admin/users/${encodeURIComponent(userId)}`, {
+      const response = await fetch(resolveAdminUrl(`/api/admin/users/${encodeURIComponent(userId)}`), {
         method: 'DELETE',
         headers,
       });
@@ -110,7 +116,7 @@ export const adminApi = {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await fetch(`/api/admin/business-owners/${encodeURIComponent(businessId)}/status`, {
+      const response = await fetch(resolveAdminUrl(`/api/admin/business-owners/${encodeURIComponent(businessId)}/status`), {
         method: 'PATCH',
         headers,
         body: JSON.stringify({ status }),
@@ -151,7 +157,7 @@ export const adminApi = {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await fetch(`/api/admin/business-owners/${encodeURIComponent(businessId)}`, {
+      const response = await fetch(resolveAdminUrl(`/api/admin/business-owners/${encodeURIComponent(businessId)}`), {
         method: 'DELETE',
         headers,
       });
@@ -199,7 +205,7 @@ export const adminApi = {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await fetch('/api/admin/smtp-diagnostic', {
+      const response = await fetch(resolveAdminUrl('/api/admin/smtp-diagnostic'), {
         headers,
       });
 
@@ -240,7 +246,7 @@ export const adminApi = {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await fetch('/api/admin/send-test-email', {
+      const response = await fetch(resolveAdminUrl('/api/admin/send-test-email'), {
         method: 'POST',
         headers,
         body: JSON.stringify({ recipientEmail }),

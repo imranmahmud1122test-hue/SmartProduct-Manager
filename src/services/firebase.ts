@@ -1,5 +1,14 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  signOut,
+  onAuthStateChanged,
+  User as FirebaseUser,
+} from 'firebase/auth';
 import {
   initializeFirestore,
   getFirestore,
@@ -32,6 +41,54 @@ const firebaseConfig = {
 export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 export const auth = getAuth(app);
+
+export const googleAuthProvider = new GoogleAuthProvider();
+googleAuthProvider.setCustomParameters({
+  prompt: 'select_account',
+});
+
+export interface GoogleAuthResult {
+  firebaseUser: FirebaseUser;
+  email: string;
+  displayName: string;
+  photoURL?: string;
+  uid: string;
+}
+
+/**
+ * Authenticates the user with real Google OAuth via Firebase Authentication.
+ * Only genuine Google accounts can pass this authentication.
+ */
+export async function signInWithGooglePopup(): Promise<GoogleAuthResult> {
+  try {
+    const credential = await signInWithPopup(auth, googleAuthProvider);
+    const user = credential.user;
+    if (!user.email) {
+      throw new Error('No verified email address was returned by Google.');
+    }
+    return {
+      firebaseUser: user,
+      email: user.email.toLowerCase(),
+      displayName: user.displayName || user.email.split('@')[0],
+      photoURL: user.photoURL || undefined,
+      uid: user.uid,
+    };
+  } catch (err: any) {
+    if (err.code === 'auth/popup-closed-by-user') {
+      throw new Error('Google Sign-In was closed by the user.');
+    }
+    if (err.code === 'auth/cancelled-popup-request') {
+      throw new Error('Another sign-in request is already in progress.');
+    }
+    if (err.code === 'auth/popup-blocked') {
+      throw new Error('Google Sign-In popup was blocked by your browser. Please allow popups or open in a new window.');
+    }
+    if (err.code === 'auth/network-request-failed') {
+      throw new Error('Network error during Google authentication. Please check your connection.');
+    }
+    throw new Error(err.message || 'Failed to authenticate with Google.');
+  }
+}
 
 // Use forced long-polling to ensure reliable connectivity across network firewalls, proxies, and preview sandboxes without initial WebSocket attempts
 let firestoreInstance;
