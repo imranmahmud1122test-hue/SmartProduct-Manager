@@ -1707,7 +1707,7 @@ app.post('/api/business/update-profile', async (req: Request, res: Response) => 
 
     const isAuthorizedOwner =
       (userRole === 'business_owner' || userRole === 'owner') &&
-      (userBizId === cleanBusinessId || cleanUserId.length > 0);
+      (userBizId.toLowerCase() === cleanBusinessId.toLowerCase() || cleanUserId.length > 0);
 
     if (!isSuperAdmin && !isAuthorizedOwner) {
       console.warn(`[Security Alert] User ${cleanUserId} (${userEmail}) attempted unauthorized profile update on shop ${cleanBusinessId}`);

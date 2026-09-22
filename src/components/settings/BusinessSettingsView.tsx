@@ -60,17 +60,40 @@ export const BusinessSettingsView: React.FC<BusinessSettingsViewProps> = ({
   const [staffRole, setStaffRole] = useState<'manager' | 'staff'>('staff');
 
   useEffect(() => {
-    if (business) {
-      setName(business.name);
-      setLogoUrl(business.logoUrl || '');
-      setCurrencySymbol(business.currencySymbol || '৳');
-      setTaxRate(business.taxRate ?? 5.0);
-      setPhone(business.phone || '');
-      setEmail(business.email || '');
-      setAddress(business.address || '');
-      setDescription(business.description || '');
-      setBusinessType(business.businessType || 'Supermarket');
-      setIsPublicStoreEnabled(business.isPublicStoreEnabled ?? true);
+    const activeBiz =
+      business ||
+      db.getBusinessById(businessId) ||
+      (currentUser.businessId === businessId
+        ? {
+            id: businessId,
+            name: currentUser.businessName || 'My Store',
+            ownerName: currentUser.name || 'Store Owner',
+            ownerId: currentUser.id,
+            email: currentUser.email,
+            phone: '',
+            address: '',
+            businessType: 'Supermarket' as const,
+            logoUrl: '',
+            currencySymbol: '৳',
+            taxRate: 5.0,
+            status: 'active' as const,
+            createdAt: new Date().toISOString(),
+            isPublicStoreEnabled: true,
+            emailVerified: true,
+          }
+        : null);
+
+    if (activeBiz) {
+      setName(activeBiz.name || '');
+      setLogoUrl(activeBiz.logoUrl || '');
+      setCurrencySymbol(activeBiz.currencySymbol || '৳');
+      setTaxRate(activeBiz.taxRate ?? 5.0);
+      setPhone(activeBiz.phone || '');
+      setEmail(activeBiz.email || '');
+      setAddress(activeBiz.address || '');
+      setDescription(activeBiz.description || '');
+      setBusinessType(activeBiz.businessType || 'Supermarket');
+      setIsPublicStoreEnabled(activeBiz.isPublicStoreEnabled ?? true);
     }
 
     // Load staff
@@ -89,6 +112,8 @@ export const BusinessSettingsView: React.FC<BusinessSettingsViewProps> = ({
     business?.businessType,
     business?.isPublicStoreEnabled,
     businessId,
+    currentUser.businessId,
+    currentUser.businessName,
   ]);
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

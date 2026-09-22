@@ -1011,8 +1011,52 @@ export const db = {
   },
 
   getBusinessById(businessId: string): Business | undefined {
+    if (!businessId) return undefined;
+    const cleanId = businessId.trim();
     const businesses = this.getBusinesses();
-    return businesses.find((b) => b.id === businessId);
+    
+    // 1. Direct ID match
+    let biz = businesses.find((b) => b && b.id === cleanId);
+    if (biz) return biz;
+
+    // 2. Case-insensitive ID match
+    biz = businesses.find((b) => b && b.id?.trim().toLowerCase() === cleanId.toLowerCase());
+    if (biz) return biz;
+
+    // 3. Match by ownerId
+    biz = businesses.find((b) => b && (b.ownerId === cleanId || b.id === cleanId));
+    if (biz) return biz;
+
+    // 4. Fallback from current logged in user if this belongs to them
+    const currentUser = this.getCurrentUser();
+    if (currentUser && (
+      currentUser.businessId === cleanId ||
+      currentUser.businessId?.trim().toLowerCase() === cleanId.toLowerCase() ||
+      currentUser.id === cleanId
+    )) {
+      const recoveredBiz: Business = {
+        id: currentUser.businessId || cleanId,
+        name: currentUser.businessName || 'My Store',
+        ownerName: currentUser.name || 'Store Owner',
+        ownerId: currentUser.id,
+        email: currentUser.email,
+        phone: '',
+        address: '',
+        businessType: 'Supermarket',
+        currencySymbol: '৳',
+        taxRate: 5.0,
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        isPublicStoreEnabled: true,
+        emailVerified: true,
+      };
+      const existingList = businesses.filter((b) => b && b.id !== recoveredBiz.id);
+      setToStorage(STORAGE_KEYS.BUSINESSES, [...existingList, recoveredBiz]);
+      setDoc(doc(firestoreDb, 'businesses', recoveredBiz.id), sanitizeForFirestore(recoveredBiz), { merge: true }).catch(() => {});
+      return recoveredBiz;
+    }
+
+    return undefined;
   },
 
   async registerBusiness(data: {
@@ -1331,9 +1375,63 @@ export const db = {
   },
 
   updateBusiness(businessId: string, updates: Partial<Business>, user?: User): Business {
+    const cleanBusinessId = (businessId || '').trim();
     const businesses = this.getBusinesses();
-    const index = businesses.findIndex((b) => b.id === businessId);
-    if (index === -1) throw new Error('Business shop profile not found.');
+    
+    // 1. Direct match
+    let index = businesses.findIndex((b) => b && b.id === cleanBusinessId);
+    
+    // 2. Case-insensitive match fallback
+    if (index === -1) {
+      index = businesses.findIndex((b) => b && b.id?.trim().toLowerCase() === cleanBusinessId.toLowerCase());
+    }
+
+    // 3. Match by owner ID or email
+    if (index === -1 && user) {
+      index = businesses.findIndex((b) => b && (b.ownerId === user.id || (user.email && b.email?.toLowerCase() === user.email.toLowerCase())));
+    }
+
+    // 4. If not found in local cache, dynamically upsert/initialize the business profile for this authorized owner
+    if (index === -1) {
+      const activeUser = user || this.getCurrentUser();
+      const isSuperAdmin = Boolean(
+        activeUser &&
+        (activeUser.role === 'super_admin' || activeUser.email?.toLowerCase() === 'imranmahmud1122.test@gmail.com')
+      );
+      const isAuthorizedOwner = Boolean(
+        activeUser &&
+        ((activeUser.businessId && activeUser.businessId.toLowerCase() === cleanBusinessId.toLowerCase()) ||
+          activeUser.role === 'business_owner' ||
+          activeUser.role === 'owner')
+      );
+
+      if (activeUser && (isSuperAdmin || isAuthorizedOwner)) {
+        const synthesizedBiz: Business = {
+          id: cleanBusinessId || activeUser.businessId || 'SHOP-001',
+          name: updates.name ? updates.name.trim() : (activeUser.businessName || 'My Store'),
+          ownerName: activeUser.name || 'Store Owner',
+          ownerId: activeUser.id,
+          email: activeUser.email,
+          phone: updates.phone || '',
+          address: updates.address || '',
+          businessType: updates.businessType || 'Supermarket',
+          logoUrl: updates.logoUrl || '',
+          currencySymbol: updates.currencySymbol || '৳',
+          taxRate: updates.taxRate !== undefined ? Number(updates.taxRate) : 5.0,
+          status: 'active',
+          createdAt: new Date().toISOString(),
+          isPublicStoreEnabled: updates.isPublicStoreEnabled !== undefined ? updates.isPublicStoreEnabled : true,
+          description: updates.description || '',
+          emailVerified: true,
+        };
+        businesses.push(synthesizedBiz);
+        index = businesses.length - 1;
+        setToStorage(STORAGE_KEYS.BUSINESSES, businesses);
+        setDoc(doc(firestoreDb, 'businesses', synthesizedBiz.id), sanitizeForFirestore(synthesizedBiz), { merge: true }).catch(() => {});
+      } else {
+        throw new Error('Business shop profile not found.');
+      }
+    }
 
     const targetBusiness = businesses[index];
 
@@ -1346,11 +1444,13 @@ export const db = {
 
       const isAuthorizedOwner =
         (user.role === 'business_owner' || user.role === 'owner') &&
-        (user.businessId === businessId || targetBusiness.ownerId === user.id);
+        (user.businessId?.toLowerCase() === cleanBusinessId.toLowerCase() ||
+          user.businessId === targetBusiness.id ||
+          targetBusiness.ownerId === user.id);
 
       if (!isSuperAdmin && !isAuthorizedOwner) {
         throw new Error(
-          `Security Violation: Access Denied. You do not have permission to edit Business Owner shop profile "${targetBusiness.name}" (${businessId}).`
+          `Security Violation: Access Denied. You do not have permission to edit Business Owner shop profile "${targetBusiness.name}" (${cleanBusinessId}).`
         );
       }
     }
@@ -1382,13 +1482,13 @@ export const db = {
     setToStorage(STORAGE_KEYS.BUSINESSES, businesses);
 
     // Synchronize in Firestore
-    setDoc(doc(firestoreDb, 'businesses', businessId), sanitizeForFirestore(updatedBusiness), { merge: true }).catch((err) =>
-      handleFirestoreError(err, OperationType.UPDATE, `businesses/${businessId}`)
+    setDoc(doc(firestoreDb, 'businesses', targetBusiness.id || cleanBusinessId), sanitizeForFirestore(updatedBusiness), { merge: true }).catch((err) =>
+      handleFirestoreError(err, OperationType.UPDATE, `businesses/${targetBusiness.id || cleanBusinessId}`)
     );
 
     // Synchronize owner user record businessName
     const users = this.getUsers();
-    const ownerIndex = users.findIndex((u) => u.id === targetBusiness.ownerId || u.businessId === businessId);
+    const ownerIndex = users.findIndex((u) => u.id === targetBusiness.ownerId || u.businessId === targetBusiness.id);
     if (ownerIndex !== -1 && safeUpdates.name) {
       users[ownerIndex].businessName = safeUpdates.name;
       setToStorage(STORAGE_KEYS.USERS, users);
@@ -1399,7 +1499,7 @@ export const db = {
 
     // Synchronize active logged in user in memory if applicable
     const currentUser = this.getCurrentUser();
-    if (currentUser && (currentUser.businessId === businessId || currentUser.id === targetBusiness.ownerId) && safeUpdates.name) {
+    if (currentUser && (currentUser.businessId === targetBusiness.id || currentUser.id === targetBusiness.ownerId) && safeUpdates.name) {
       const updatedCurrentUser = { ...currentUser, businessName: safeUpdates.name };
       this.setCurrentUser(updatedCurrentUser);
     }
@@ -1410,7 +1510,7 @@ export const db = {
       const allProducts = this.getAllProductsRaw();
       let updatedCount = 0;
       const updatedProducts = allProducts.map((p) => {
-        if (p.businessId === businessId) {
+        if (p.businessId === targetBusiness.id || p.businessId === cleanBusinessId) {
           updatedCount++;
           setDoc(doc(firestoreDb, 'products', p.id), { businessName: newShopName }, { merge: true }).catch((err) =>
             handleFirestoreError(err, OperationType.UPDATE, `products/${p.id}`)
@@ -1429,18 +1529,18 @@ export const db = {
     notifyStorageUpdate(STORAGE_KEYS.BUSINESSES);
     notifyStorageUpdate(STORAGE_KEYS.PRODUCTS);
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('spm_business_update', { detail: { businessId, updatedBusiness, timestamp: Date.now() } }));
+      window.dispatchEvent(new CustomEvent('spm_business_update', { detail: { businessId: targetBusiness.id, updatedBusiness, timestamp: Date.now() } }));
     }
 
     if (user) {
       this.logAudit({
-        businessId,
+        businessId: targetBusiness.id,
         businessName: updatedBusiness.name,
         userId: user.id,
         userName: user.name,
         userRole: user.role,
         action: 'UPDATE_BUSINESS',
-        details: `Shop profile updated for ${updatedBusiness.name} (${businessId}). Updated fields: ${Object.keys(safeUpdates).join(', ')}`,
+        details: `Shop profile updated for ${updatedBusiness.name} (${targetBusiness.id}). Updated fields: ${Object.keys(safeUpdates).join(', ')}`,
       });
     }
 
@@ -1452,13 +1552,15 @@ export const db = {
     updates: Partial<Business>,
     requestingUser: User
   ): Promise<Business> {
+    const cleanBizId = (businessId || requestingUser.businessId || '').trim();
+
     // 1. Check server-side authorization API endpoint
     try {
       const response = await fetch('/api/business/update-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          businessId,
+          businessId: cleanBizId,
           requestingUser: {
             id: requestingUser.id,
             email: requestingUser.email,
@@ -1482,7 +1584,7 @@ export const db = {
     }
 
     // 2. Perform database update with local + Firestore synchronization
-    return this.updateBusiness(businessId, updates, requestingUser);
+    return this.updateBusiness(cleanBizId, updates, requestingUser);
   },
 
   updateBusinessStatus(businessId: string, status: 'active' | 'suspended' | 'deactivated', adminUser?: User): Business {
