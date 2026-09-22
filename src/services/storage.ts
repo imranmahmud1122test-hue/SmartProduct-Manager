@@ -2449,16 +2449,38 @@ export const db = {
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   },
 
-  logAudit(data: Omit<AuditLog, 'id' | 'timestamp'>): void {
+  logAudit(data: Partial<AuditLog> & { action: string; details: string }): void {
     const all = getFromStorage<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
+    const currentUser = this.getCurrentUser();
     const newLog: AuditLog = {
-      ...data,
       id: `LOG-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+      userId: data.userId || currentUser?.id || 'system',
+      userName: data.userName || currentUser?.name || 'System User',
+      userRole: (data.userRole as any) || currentUser?.role || 'super_admin',
+      businessId: data.businessId !== undefined ? data.businessId : (currentUser?.businessId || null),
+      businessName: data.businessName || currentUser?.businessName,
+      action: data.action,
+      details: data.details,
       timestamp: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
     };
     all.unshift(newLog);
     if (all.length > 500) all.pop(); // Keep manageable size
     setToStorage(STORAGE_KEYS.AUDIT_LOGS, all);
+  },
+
+  addAuditLog(action: string, details: string, extra?: Partial<AuditLog>): void {
+    const currentUser = this.getCurrentUser();
+    this.logAudit({
+      action,
+      details,
+      userId: extra?.userId || currentUser?.id || 'system',
+      userName: extra?.userName || currentUser?.name || 'System User',
+      userRole: (extra?.userRole as any) || currentUser?.role || 'super_admin',
+      businessId: extra?.businessId !== undefined ? extra.businessId : (currentUser?.businessId || null),
+      businessName: extra?.businessName || currentUser?.businessName,
+      ...extra,
+    });
   },
 
   getPlatformStats() {

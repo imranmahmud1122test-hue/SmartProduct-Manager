@@ -15,7 +15,9 @@ import {
   ArrowRight,
   ShieldCheck,
   Sparkles,
-  Lock
+  Lock,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { db } from '../../services/storage';
 import { signInWithGooglePopup, GoogleAuthResult } from '../../services/firebase';
@@ -58,8 +60,8 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
   onSwitchToLogin,
   prefillGoogleUser,
 }) => {
-  const [googleUser, setGoogleUser] = useState<GoogleAuthResult | null>(prefillGoogleUser || null);
-  const [ownerName, setOwnerName] = useState(prefillGoogleUser?.displayName || '');
+  const [googleUser, setGoogleUser] = useState<GoogleAuthResult | null>(null);
+  const [ownerName, setOwnerName] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
@@ -73,22 +75,38 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
   const [loadingStep, setLoadingStep] = useState('Creating Supermarket Workspace...');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Manual email/password fields if registering without Google
+  // Manual email/password fields - strictly empty by default to protect privacy
   const [manualEmail, setManualEmail] = useState('');
   const [manualPassword, setManualPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
+  // Reset form whenever modal opens or switches
   useEffect(() => {
-    if (prefillGoogleUser) {
-      setGoogleUser(prefillGoogleUser);
-      if (prefillGoogleUser.displayName && !ownerName) {
-        setOwnerName(prefillGoogleUser.displayName);
-      }
-      if (prefillGoogleUser.photoURL && !logoUrl) {
-        setLogoPreview(prefillGoogleUser.photoURL);
-        setLogoUrl(prefillGoogleUser.photoURL);
+    if (isOpen) {
+      if (prefillGoogleUser) {
+        setGoogleUser(prefillGoogleUser);
+        setOwnerName(prefillGoogleUser.displayName || '');
+        setManualEmail(prefillGoogleUser.email || '');
+        setManualPassword('');
+        if (prefillGoogleUser.photoURL) {
+          setLogoPreview(prefillGoogleUser.photoURL);
+          setLogoUrl(prefillGoogleUser.photoURL);
+        }
+      } else {
+        setGoogleUser(null);
+        setOwnerName('');
+        setBusinessName('');
+        setManualEmail('');
+        setManualPassword('');
+        setShowPassword(false);
+        setPhone('');
+        setAddress('');
+        setLogoUrl('');
+        setLogoPreview(null);
+        setError(null);
       }
     }
-  }, [prefillGoogleUser]);
+  }, [isOpen, prefillGoogleUser]);
 
   if (!isOpen) return null;
 
@@ -157,12 +175,17 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
     const cleanEmail = (activeGoogleUser?.email || manualEmail || '').trim().toLowerCase();
 
     if (!cleanEmail) {
-      setError('Please provide your Gmail or Account Email address.');
+      setError('Please enter your Gmail address.');
       return;
     }
 
     if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
-      setError('Please enter a valid email address.');
+      setError('Please enter a valid Gmail or email address.');
+      return;
+    }
+
+    if (!activeGoogleUser && !manualPassword.trim()) {
+      setError('Please create your password for the account.');
       return;
     }
 
@@ -198,7 +221,7 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
           ownerName: finalOwnerName,
           businessName: businessName.trim(),
           email: cleanEmail,
-          password: manualPassword || '123456',
+          password: manualPassword.trim() || '123456',
           phone: phone.trim() || undefined,
           address: address.trim() || 'Dhaka, Bangladesh',
           businessType,
@@ -242,7 +265,7 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
         </div>
 
         {/* Scrollable Form */}
-        <form onSubmit={handleSubmit} className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
+        <form onSubmit={handleSubmit} autoComplete="off" data-lpignore="true" className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
           {error && (
             <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs font-medium text-rose-700 flex items-start gap-2.5 animate-in fade-in duration-200">
               <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
@@ -335,10 +358,17 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
                       <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                       <input
                         id="input-reg-email"
+                        name="owner_registration_email"
                         type="email"
                         required
                         disabled={isLoading}
-                        placeholder="yourname@gmail.com"
+                        autoComplete="off"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck="false"
+                        data-lpignore="true"
+                        data-form-type="other"
+                        placeholder="Enter your Gmail address"
                         value={manualEmail}
                         onChange={(e) => setManualEmail(e.target.value)}
                         className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
@@ -353,14 +383,29 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
                       <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                       <input
                         id="input-reg-password"
-                        type="password"
+                        name="owner_registration_password"
+                        type={showPassword ? 'text' : 'password'}
                         required
                         disabled={isLoading}
-                        placeholder="Create password (e.g. 123456)"
+                        autoComplete="new-password"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck="false"
+                        data-lpignore="true"
+                        data-form-type="other"
+                        placeholder="Create your password"
                         value={manualPassword}
                         onChange={(e) => setManualPassword(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                        className="w-full pl-9 pr-9 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -384,10 +429,13 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
                   <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     id="input-reg-owner-name"
+                    name="owner_full_name"
                     type="text"
                     required
                     disabled={isLoading}
-                    placeholder="e.g. Imran Mahmud"
+                    autoComplete="off"
+                    data-lpignore="true"
+                    placeholder="Enter your full name"
                     value={ownerName}
                     onChange={(e) => setOwnerName(e.target.value)}
                     className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-900"
@@ -404,10 +452,13 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
                   <Building2 className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     id="input-reg-business-name"
+                    name="store_business_name"
                     type="text"
                     required
                     disabled={isLoading}
-                    placeholder="e.g. Metro Supermarket & Mart"
+                    autoComplete="off"
+                    data-lpignore="true"
+                    placeholder="Enter store name"
                     value={businessName}
                     onChange={(e) => setBusinessName(e.target.value)}
                     className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-900"
@@ -464,9 +515,12 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
                   <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     id="input-reg-phone"
+                    name="contact_phone_number"
                     type="tel"
                     disabled={isLoading}
-                    placeholder="+880 1711-000000"
+                    autoComplete="off"
+                    data-lpignore="true"
+                    placeholder="Enter phone number (optional)"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-900"
@@ -481,9 +535,12 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
                   <MapPin className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     id="input-reg-address"
+                    name="store_location_address"
                     type="text"
                     disabled={isLoading}
-                    placeholder="e.g. Gulshan 2, Dhaka"
+                    autoComplete="off"
+                    data-lpignore="true"
+                    placeholder="Enter store address"
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
                     className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-900"

@@ -333,7 +333,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   type="email"
                   required
                   disabled={isLoading || isGoogleLoading}
-                  placeholder="owner@yourstore.com"
+                  placeholder="Enter your email address"
                   value={email}
                   onBlur={() => setTouched((prev) => ({ ...prev, email: true }))}
                   onChange={(e) => {
@@ -366,7 +366,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   type={showPassword ? 'text' : 'password'}
                   required
                   disabled={isLoading || isGoogleLoading}
-                  placeholder="••••••••"
+                  placeholder="Enter your password"
                   value={password}
                   onBlur={() => setTouched((prev) => ({ ...prev, password: true }))}
                   onChange={(e) => {
