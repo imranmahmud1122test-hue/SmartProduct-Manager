@@ -199,8 +199,16 @@ export default function App() {
 
   // -------------------------------------------------------------
   // RENDER FLOW 2: Super Admin Platform Panel (If not switched)
+  // STRICT SECURITY: Only Imran Mahmud (imranmahmud1122.test@gmail.com) can access Super Admin
   // -------------------------------------------------------------
-  if (currentUser.role === 'super_admin' && !isSuperAdminSwitched) {
+  const cleanCurrentEmail = (currentUser.email || '').trim().toLowerCase();
+  const cleanCurrentName = (currentUser.name || '').trim().toLowerCase();
+  const isSuperAdminAuthorized =
+    currentUser.role === 'super_admin' &&
+    cleanCurrentEmail === 'imranmahmud1122.test@gmail.com' &&
+    (cleanCurrentName === 'imran mahmud' || cleanCurrentName === 'imran');
+
+  if (isSuperAdminAuthorized && !isSuperAdminSwitched) {
     return (
       <SuperAdminDashboard
         currentUser={currentUser}

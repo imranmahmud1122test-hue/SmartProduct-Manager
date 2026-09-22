@@ -41,6 +41,7 @@ const firebaseConfig = {
 export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 export const auth = getAuth(app);
+export const firebaseAuth = auth;
 
 export const googleAuthProvider = new GoogleAuthProvider();
 googleAuthProvider.setCustomParameters({
@@ -68,12 +69,18 @@ export async function signInWithGooglePopup(): Promise<GoogleAuthResult> {
     }
     return {
       firebaseUser: user,
-      email: user.email.toLowerCase(),
-      displayName: user.displayName || user.email.split('@')[0],
+      email: (user.email || '').toLowerCase(),
+      displayName: user.displayName || (user.email ? user.email.split('@')[0] : 'User'),
       photoURL: user.photoURL || undefined,
       uid: user.uid,
     };
   } catch (err: any) {
+    if (err.code === 'auth/unauthorized-domain' || err.message?.includes('auth/unauthorized-domain') || err.message?.includes('unauthorized-domain')) {
+      const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'this domain';
+      const customErr: any = new Error(`Domain not authorized in Firebase Console (${currentHost}). You can register and log in directly using your Gmail address below.`);
+      customErr.code = 'auth/unauthorized-domain';
+      throw customErr;
+    }
     if (err.code === 'auth/popup-closed-by-user') {
       throw new Error('Google Sign-In was closed by the user.');
     }
@@ -148,12 +155,15 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   };
 
   if (isPermissionDenied) {
-    console.error('[Firestore Security Restriction]:', JSON.stringify(errInfo));
-    emitGlobalToast(
-      'security',
-      'Firestore Security Rule Restriction',
-      `Access to '${path || 'collection'}' was denied by Firestore security rules (${operationType.toUpperCase()}). Please verify user role and tenant permissions.`
-    );
+    console.warn('[Firestore Permission Notice]:', JSON.stringify(errInfo));
+    // Only display user-facing security alert if an active Firebase Auth user was denied
+    if (auth.currentUser) {
+      emitGlobalToast(
+        'security',
+        'Firestore Security Rule Restriction',
+        `Access to '${path || 'collection'}' was denied by Firestore security rules (${operationType.toUpperCase()}). Please verify user role and tenant permissions.`
+      );
+    }
   } else if (isUnavailable) {
     console.warn(`[Firestore Offline/Unavailable] Falling back to local storage cache for ${path || 'collection'}:`, errMsg);
   } else {
@@ -166,16 +176,20 @@ export async function testFirestoreConnection(): Promise<boolean> {
   try {
     const testDocRef = doc(firestoreDb, 'test', 'connection');
     
-    // Race getDocFromServer against a 2.5-second timeout to check backend reachability
+    // Race getDocFromServer against a 3.5-second timeout to check backend reachability
     const networkPromise = getDocFromServer(testDocRef);
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Connection timeout')), 2500)
+      setTimeout(() => reject(new Error('Connection timeout')), 3500)
     );
 
     await Promise.race([networkPromise, timeoutPromise]);
     return true;
-  } catch (error) {
+  } catch (error: any) {
     const errMsg = error instanceof Error ? error.message : String(error);
+    // If the server responded with permission-denied or any Firebase code, it reached the server
+    if (error?.code === 'permission-denied' || errMsg.includes('insufficient permissions')) {
+      return true;
+    }
     console.warn('[Firestore] Connection probe could not reach backend. Running in offline/cached mode:', errMsg);
     return false;
   }

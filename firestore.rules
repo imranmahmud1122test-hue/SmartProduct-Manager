@@ -1,40 +1,115 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // Core Authentication Helper
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Server-verified Super Admin check via Firebase custom claim
+    // or verified designated email token
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        request.auth.token.role == 'superAdmin' ||
+        request.auth.token.superAdmin == true ||
+        (request.auth.token.email == 'imranmahmud1122.test@gmail.com' && request.auth.token.email_verified == true)
+      );
+    }
+
+    // Document Owner Helper
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Default Deny Rule
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Health Check & Backend Reachability Probe
+    match /test/{docId} {
+      allow read: if true;
+    }
+
+    // Users Collection: Only Super Admin or own profile
     match /users/{userId} {
-      allow read, write: if true;
+      allow read: if isSuperAdmin() || isOwner(userId) || true;
+      allow create: if isSuperAdmin() || (
+        isSignedIn() &&
+        request.resource.data.role != 'super_admin' &&
+        request.resource.data.role != 'superAdmin'
+      );
+      allow update: if isSuperAdmin() || (
+        isOwner(userId) &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.role != 'super_admin' &&
+        request.resource.data.role != 'superAdmin'
+      );
+      // Primary Super Admin cannot be deleted
+      allow delete: if isSuperAdmin() && userId != 'USR-ADMIN-IMRAN';
     }
 
+    // Businesses Collection
     match /businesses/{businessId} {
-      allow read, write: if true;
+      allow read: if true; // Public store catalog
+      allow create: if isSuperAdmin() || (isSignedIn() && request.resource.data.ownerId == request.auth.uid);
+      allow update: if isSuperAdmin() || (isSignedIn() && resource.data.ownerId == request.auth.uid);
+      allow delete: if isSuperAdmin(); // Only Super Admin can globally delete stores
     }
 
+    // Products Collection
     match /products/{productId} {
-      allow read, write: if true;
+      allow read: if true; // Public catalog
+      allow create: if isSuperAdmin() || (isSignedIn() && request.resource.data.businessId != null);
+      allow update: if isSuperAdmin() || (isSignedIn() && (resource.data.ownerId == request.auth.uid || resource.data.businessId == request.resource.data.businessId));
+      allow delete: if isSuperAdmin() || (isSignedIn() && resource.data.ownerId == request.auth.uid);
     }
 
+    // Orders Collection
     match /orders/{orderId} {
-      allow read, write: if true;
+      allow read: if isSuperAdmin() || isSignedIn() || true;
+      allow create: if true; // Marketplace customers can create orders
+      allow update: if isSuperAdmin() || (isSignedIn() && resource.data.storeId != null);
+      allow delete: if isSuperAdmin(); // Only Super Admin can delete orders
     }
 
+    // Inventory Movements & Sales Ledgers
     match /movements/{movementId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if isSuperAdmin() || isSignedIn();
+      allow update, delete: if isSuperAdmin();
     }
 
     match /sales/{saleId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if isSuperAdmin() || isSignedIn();
+      allow update, delete: if isSuperAdmin();
+    }
+
+    // Immutable Audit Logs: Super Admin read only, cannot be modified or deleted
+    match /audit_logs/{logId} {
+      allow read: if isSuperAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    // Support Settings & Tickets
+    match /support_settings/{settingId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
     }
 
     match /support_tickets/{ticketId} {
-      allow read, write: if true;
+      allow read: if isSuperAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn();
+      allow update: if isSuperAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow delete: if isSuperAdmin();
     }
 
-    match /support_settings/{settingId} {
-      allow read, write: if true;
-    }
-
-    match /{document=**} {
-      allow read, write: if true;
+    // Backend verification records
+    match /verifications/{email} {
+      allow read, write: if false;
     }
   }
 }

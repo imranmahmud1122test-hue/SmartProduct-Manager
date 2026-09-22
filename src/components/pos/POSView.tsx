@@ -219,7 +219,7 @@ export const POSView: React.FC<POSViewProps> = ({
 
     const code = barcodeInput.trim().toLowerCase();
     const found = products.find(
-      (p) => p.barcode.toLowerCase() === code || p.sku.toLowerCase() === code
+      (p) => (p.barcode || '').toLowerCase() === code || (p.sku || '').toLowerCase() === code
     );
 
     if (found) {
@@ -278,9 +278,9 @@ export const POSView: React.FC<POSViewProps> = ({
     if (selectedCategory !== 'ALL' && p.category !== selectedCategory) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const matchName = p.name.toLowerCase().includes(q);
-      const matchSku = p.sku.toLowerCase().includes(q);
-      const matchBarcode = p.barcode.toLowerCase().includes(q);
+      const matchName = (p.name || '').toLowerCase().includes(q);
+      const matchSku = (p.sku || '').toLowerCase().includes(q);
+      const matchBarcode = (p.barcode || '').toLowerCase().includes(q);
       if (!matchName && !matchSku && !matchBarcode) return false;
     }
     return true;

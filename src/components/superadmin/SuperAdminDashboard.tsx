@@ -49,7 +49,7 @@ import {
 } from 'lucide-react';
 import { db } from '../../services/storage';
 import { adminApi } from '../../services/adminApi';
-import { Business, User, UserRole, SupportSettings, SupportTicket, Order } from '../../types';
+import { Business, User, UserRole, SupportSettings, SupportTicket, Order, Product } from '../../types';
 import { formatCurrency, formatDate } from '../../utils/codeGenerators';
 import { Logo } from '../common/Logo';
 import { useLanguage, LanguageSwitcher } from '../../context/LanguageContext';
@@ -89,12 +89,13 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     );
   }
 
-  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'workspaces' | 'orders' | 'support_settings' | 'support_tickets' | 'smtp_diagnostics'>('users');
+  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'workspaces' | 'products' | 'orders' | 'support_settings' | 'support_tickets' | 'smtp_diagnostics'>('users');
   const [userSubTab, setUserSubTab] = useState<'all_users' | 'business_owners'>('all_users');
   
   // Data states
   const [users, setUsers] = useState<User[]>([]);
   const [businesses, setBusinesses] = useState<Business[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   
   // Search & Filter states
@@ -103,6 +104,8 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [userStatusFilter, setUserStatusFilter] = useState<string>('ALL');
   
   const [searchQuery, setSearchQuery] = useState('');
+  const [productSearchQuery, setProductSearchQuery] = useState('');
+  const [productStoreFilter, setProductStoreFilter] = useState<string>('ALL');
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>('ALL');
   const [orderBusinessFilter, setOrderBusinessFilter] = useState<string>('ALL');
@@ -111,6 +114,8 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
   const [alsoDeleteAssociatedStore, setAlsoDeleteAssociatedStore] = useState(true);
   const [businessOwnerToDelete, setBusinessOwnerToDelete] = useState<Business | null>(null);
   const [businessOwnerToDeactivate, setBusinessOwnerToDeactivate] = useState<Business | null>(null);
@@ -147,6 +152,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const loadData = () => {
     setUsers(db.getUsers());
     setBusinesses(db.getBusinesses());
+    setProducts(db.getAllProductsRaw());
     setSupportSettings(db.getSupportSettings());
     setTickets(db.getSupportTickets());
     setOrders(db.getAllOrders());
@@ -163,9 +169,11 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     const handleUpdate = () => loadData();
     window.addEventListener('spm_order_update', handleUpdate);
     window.addEventListener('spm_storage_update', handleUpdate);
+    window.addEventListener('spm_product_update', handleUpdate);
     return () => {
       window.removeEventListener('spm_order_update', handleUpdate);
       window.removeEventListener('spm_storage_update', handleUpdate);
+      window.removeEventListener('spm_product_update', handleUpdate);
     };
   }, [currentUser]);
 
@@ -188,9 +196,31 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     setIsProcessing(true);
     setActionError(null);
 
+    // Strict Super Admin Verification
+    if ((currentUser.email || '').toLowerCase() !== 'imranmahmud1122.test@gmail.com') {
+      setActionError('Security policy: Only Super Admin (imranmahmud1122.test@gmail.com) is permitted to delete users.');
+      setIsProcessing(false);
+      return;
+    }
+
     const targetUserId = userToDelete.id;
     const targetBusinessId = userToDelete.businessId;
     const shouldPurgeStore = alsoDeleteAssociatedStore && Boolean(targetBusinessId);
+
+    // Root Super Admin protection check: EXACTLY ONE Super Admin exists: Imran Mahmud (imranmahmud1122.test@gmail.com)
+    const targetEmail = (userToDelete.email || '').toLowerCase().trim();
+    const targetName = (userToDelete.name || '').toLowerCase().trim();
+    const isTargetRootAdmin = targetEmail === 'imranmahmud1122.test@gmail.com' &&
+      (targetName === 'imran mahmud' || targetName === 'imran');
+
+    if (
+      targetUserId === 'USR-ADMIN-IMRAN' ||
+      isTargetRootAdmin
+    ) {
+      setActionError('Security policy: The single designated Super Admin account (Imran Mahmud) cannot be deleted.');
+      setIsProcessing(false);
+      return;
+    }
 
     try {
       // 1. Delete user locally and from Firestore
@@ -223,6 +253,74 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     }
   };
 
+  // Delete Product by Super Admin
+  const handleConfirmDeleteProduct = async () => {
+    if (!productToDelete) return;
+    setIsProcessing(true);
+    setActionError(null);
+
+    // Strict Super Admin Verification
+    if ((currentUser.email || '').toLowerCase() !== 'imranmahmud1122.test@gmail.com') {
+      setActionError('Security policy: Only Super Admin (imranmahmud1122.test@gmail.com) is permitted to delete products.');
+      setIsProcessing(false);
+      return;
+    }
+
+    try {
+      // 1. Delete locally and from Firestore
+      await db.deleteProduct(productToDelete.businessId, productToDelete.id, currentUser);
+
+      // 2. Notify backend server-side admin endpoint
+      try {
+        await adminApi.deleteProduct(productToDelete.id, currentUser);
+      } catch (srvErr) {
+        console.warn('Notice from server product deletion endpoint:', srvErr);
+      }
+
+      setProductToDelete(null);
+      loadData();
+    } catch (err: any) {
+      setActionError(err.message || 'Failed to delete product.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Delete Order by Super Admin
+  const handleConfirmDeleteOrder = async () => {
+    if (!orderToDelete) return;
+    setIsProcessing(true);
+    setActionError(null);
+
+    // Strict Super Admin Verification
+    if ((currentUser.email || '').toLowerCase() !== 'imranmahmud1122.test@gmail.com') {
+      setActionError('Security policy: Only Super Admin (imranmahmud1122.test@gmail.com) is permitted to delete orders.');
+      setIsProcessing(false);
+      return;
+    }
+
+    const orderId = orderToDelete.orderId || orderToDelete.id;
+
+    try {
+      // 1. Delete locally and from Firestore
+      db.deleteOrder(orderId, currentUser);
+
+      // 2. Notify backend server-side admin endpoint
+      try {
+        await adminApi.deleteOrder(orderId, currentUser);
+      } catch (srvErr) {
+        console.warn('Notice from server order deletion endpoint:', srvErr);
+      }
+
+      setOrderToDelete(null);
+      loadData();
+    } catch (err: any) {
+      setActionError(err.message || 'Failed to delete order.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Toggle User Status
   const handleToggleUserStatus = (targetUser: User) => {
     const nextStatus = targetUser.status === 'active' ? 'deactivated' : 'active';
@@ -239,6 +337,13 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     if (!businessOwnerToDelete) return;
     setIsProcessing(true);
     setActionError(null);
+
+    // Strict Super Admin Verification
+    if ((currentUser.email || '').toLowerCase() !== 'imranmahmud1122.test@gmail.com') {
+      setActionError('Security policy: Only Super Admin (imranmahmud1122.test@gmail.com) is permitted to delete business owners.');
+      setIsProcessing(false);
+      return;
+    }
 
     const targetBizId = businessOwnerToDelete.id;
 
@@ -352,14 +457,14 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
   // Filtered Users
   const filteredUsers = users.filter((u) => {
-    const q = userSearchQuery.toLowerCase().trim();
+    const q = (userSearchQuery || '').toLowerCase().trim();
     const matchesSearch =
       !q ||
-      u.name.toLowerCase().includes(q) ||
-      u.email.toLowerCase().includes(q) ||
-      u.id.toLowerCase().includes(q) ||
-      (u.phone && u.phone.toLowerCase().includes(q)) ||
-      (u.businessId && u.businessId.toLowerCase().includes(q));
+      (u.name || '').toLowerCase().includes(q) ||
+      (u.email || '').toLowerCase().includes(q) ||
+      (u.id || '').toLowerCase().includes(q) ||
+      (u.phone && (u.phone || '').toLowerCase().includes(q)) ||
+      (u.businessId && (u.businessId || '').toLowerCase().includes(q));
 
     const matchesRole = userRoleFilter === 'ALL' || u.role === userRoleFilter;
     const matchesStatus = userStatusFilter === 'ALL' || u.status === userStatusFilter;
@@ -370,16 +475,16 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   // Filtered Business Owners
   const businessOwners = users.filter((u) => u.role === 'business_owner' || u.role === 'owner');
   const filteredBusinessOwners = businesses.filter((b) => {
-    const q = userSearchQuery.toLowerCase().trim();
+    const q = (userSearchQuery || '').toLowerCase().trim();
     const owner = users.find((u) => u.id === b.ownerId || u.businessId === b.id);
     const matchesSearch =
       !q ||
-      b.name.toLowerCase().includes(q) ||
-      b.id.toLowerCase().includes(q) ||
-      b.ownerName.toLowerCase().includes(q) ||
-      b.email.toLowerCase().includes(q) ||
-      (b.ownerId && b.ownerId.toLowerCase().includes(q)) ||
-      (owner?.id && owner.id.toLowerCase().includes(q));
+      (b.name || '').toLowerCase().includes(q) ||
+      (b.id || '').toLowerCase().includes(q) ||
+      (b.ownerName || '').toLowerCase().includes(q) ||
+      (b.email || '').toLowerCase().includes(q) ||
+      (b.ownerId && (b.ownerId || '').toLowerCase().includes(q)) ||
+      (owner?.id && (owner.id || '').toLowerCase().includes(q));
 
     const matchesStatus = userStatusFilter === 'ALL' || b.status === userStatusFilter;
     return matchesSearch && matchesStatus;
@@ -388,7 +493,23 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const filteredBusinesses = businesses.filter((b) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
-    return b.name.toLowerCase().includes(q) || b.id.toLowerCase().includes(q) || b.email.toLowerCase().includes(q);
+    return (b.name || '').toLowerCase().includes(q) || (b.id || '').toLowerCase().includes(q) || (b.email || '').toLowerCase().includes(q);
+  });
+
+  const filteredProducts = products.filter((p) => {
+    const q = (productSearchQuery || '').toLowerCase().trim();
+    const matchesSearch =
+      !q ||
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.sku || '').toLowerCase().includes(q) ||
+      (p.barcode || '').toLowerCase().includes(q) ||
+      (p.category || '').toLowerCase().includes(q) ||
+      (p.id || '').toLowerCase().includes(q);
+
+    const matchesStore =
+      productStoreFilter === 'ALL' || p.businessId === productStoreFilter;
+
+    return matchesSearch && matchesStore;
   });
 
   const filteredTickets = tickets.filter((t) => {
@@ -533,6 +654,18 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             >
               <Building2 className="w-4 h-4 text-purple-400" />
               <span>Store Workspaces ({businesses.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveAdminTab('products')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer relative ${
+                activeAdminTab === 'products'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <Package className="w-4 h-4 text-emerald-400" />
+              <span>Products Catalog ({products.length})</span>
             </button>
 
             <button
@@ -768,16 +901,18 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
               {/* ----------------------------------------------------------- */}
               {userSubTab === 'all_users' && (
                 <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                  <table className="w-full text-left text-xs border-collapse min-w-[980px]">
+                  <table className="w-full text-left text-xs border-collapse min-w-[880px]">
                     <thead>
                       <tr className="bg-slate-900 text-slate-200 text-[11px] font-bold uppercase tracking-wider">
-                        <th className="py-3.5 px-4 w-44">Unique User ID</th>
+                        <th className="py-3.5 px-4 w-40">Unique User ID</th>
                         <th className="py-3.5 px-4">User Name & Email</th>
                         <th className="py-3.5 px-4">Role</th>
                         <th className="py-3.5 px-4">Assigned Store</th>
                         <th className="py-3.5 px-4 text-center">Status</th>
                         <th className="py-3.5 px-4">Created</th>
-                        <th className="py-3.5 px-4 text-right pr-6 min-w-[220px]">Actions & Deletion</th>
+                        <th className="py-3.5 px-4 text-right pr-6 sticky right-0 bg-slate-900 z-10 min-w-[210px] shadow-[-6px_0_12px_-4px_rgba(0,0,0,0.3)]">
+                          Actions & Deletion
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -789,13 +924,18 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                           </td>
                         </tr>
                       ) : (
-                        filteredUsers.map((u) => {
+                        filteredUsers.map((u, idx) => {
                           const userBiz = businesses.find((b) => b.id === u.businessId);
-                          const isRootAdmin = u.id === 'USR-ADMIN-IMRAN' || u.id === 'USR-ADMIN' || u.email.toLowerCase() === 'imranmahmud1122.test@gmail.com';
-                          const isSelf = u.id === currentUser.id;
+                          // EXACTLY ONE Super Administrator on the platform:
+                          // Name must match "Imran Mahmud" AND Email must match "imranmahmud1122.test@gmail.com"
+                          const cleanUserEmail = (u.email || '').toLowerCase().trim();
+                          const cleanUserName = (u.name || '').toLowerCase().trim();
+                          const isRootAdmin = cleanUserEmail === 'imranmahmud1122.test@gmail.com' &&
+                            (cleanUserName === 'imran mahmud' || cleanUserName === 'imran');
+                          const isSelf = isRootAdmin ? (u.id === currentUser.id) : (u.id === currentUser.id && cleanUserName === (currentUser.name || '').toLowerCase().trim());
 
                           return (
-                            <tr key={u.id} className="hover:bg-slate-50/80 transition-colors">
+                            <tr key={u.id ? `usr-${u.id}-${idx}` : `usr-idx-${idx}`} className="hover:bg-slate-50/80 transition-colors">
                               {/* Unique User ID */}
                               <td className="py-3.5 px-4 font-mono">
                                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200/80 text-purple-900 font-bold text-[11px]">
@@ -818,11 +958,11 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                               <td className="py-3.5 px-4">
                                 <div className="flex items-center gap-3">
                                   <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-black text-xs flex items-center justify-center shrink-0 border border-purple-200">
-                                    {u.name.substring(0, 2).toUpperCase()}
+                                    {(u.name || u.email || 'User').substring(0, 2).toUpperCase()}
                                   </div>
                                   <div>
                                     <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                                      {u.name}
+                                      {u.name || u.email?.split('@')[0] || 'User'}
                                       {isSelf && (
                                         <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-purple-100 text-purple-700">
                                           You
@@ -862,8 +1002,8 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                                 {formatDate(u.createdAt)}
                               </td>
 
-                              {/* Actions */}
-                              <td className="py-3.5 px-4 text-right pr-6">
+                              {/* Actions - Sticky Right Column */}
+                              <td className="py-3.5 px-4 text-right pr-6 sticky right-0 bg-white/95 backdrop-blur-xs z-10 shadow-[-6px_0_12px_-4px_rgba(0,0,0,0.08)]">
                                 <div className="flex items-center justify-end gap-2">
                                   {/* Quick Verify Gmail button for Pending users */}
                                   {!isRootAdmin && (u.status === 'pending' || !u.isGmailVerified) && (
@@ -905,13 +1045,22 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                                     </button>
                                   )}
 
-                                  {/* Permanent Delete User */}
-                                  {isRootAdmin || isSelf ? (
+                                  {/* Permanent Delete User / Root Protection Badge */}
+                                  {isRootAdmin ? (
                                     <span
-                                      className="px-2.5 py-1.5 bg-slate-100 text-slate-400 text-xs font-bold rounded-xl border border-slate-200 cursor-not-allowed inline-flex items-center gap-1"
-                                      title="Root Super Admin account is protected from deletion."
+                                      className="px-2.5 py-1.5 bg-purple-50 text-purple-700 text-xs font-bold rounded-xl border border-purple-200 inline-flex items-center gap-1.5 shadow-2xs"
+                                      title="Designated Super Admin account is protected from deletion."
                                     >
-                                      <Shield className="w-3.5 h-3.5 text-slate-400" /> Protected
+                                      <Shield className="w-3.5 h-3.5 text-purple-600" />
+                                      <span>Root Admin (Protected)</span>
+                                    </span>
+                                  ) : isSelf ? (
+                                    <span
+                                      className="px-2.5 py-1.5 bg-slate-100 text-slate-600 text-xs font-bold rounded-xl border border-slate-200 inline-flex items-center gap-1.5 shadow-2xs"
+                                      title="Currently active session user cannot delete own account."
+                                    >
+                                      <Shield className="w-3.5 h-3.5 text-slate-500" />
+                                      <span>Current Session</span>
                                     </span>
                                   ) : (
                                     <button
@@ -919,11 +1068,11 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                                         setAlsoDeleteAssociatedStore(Boolean(u.businessId));
                                         setUserToDelete(u);
                                       }}
-                                      className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs hover:border-rose-300"
+                                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs hover:border-rose-400"
                                       title="Permanently Delete User Account"
                                     >
-                                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                                      <span>Permanent Delete</span>
+                                      <Trash2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                      <span>Delete User</span>
                                     </button>
                                   )}
                                 </div>
@@ -942,7 +1091,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
               {/* ----------------------------------------------------------- */}
               {userSubTab === 'business_owners' && (
                 <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                  <table className="w-full text-left text-xs border-collapse min-w-[1040px]">
+                  <table className="w-full text-left text-xs border-collapse min-w-[960px]">
                     <thead>
                       <tr className="bg-slate-900 text-slate-200 text-[11px] font-bold uppercase tracking-wider">
                         <th className="py-3.5 px-4 w-44">Business Owner ID</th>
@@ -951,7 +1100,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                         <th className="py-3.5 px-4 text-center">Catalog & Sales</th>
                         <th className="py-3.5 px-4 text-center">Status</th>
                         <th className="py-3.5 px-4">Registered Date</th>
-                        <th className="py-3.5 px-4 text-right pr-6 min-w-[280px]">Actions & Deletion</th>
+                        <th className="py-3.5 px-4 text-right pr-6 sticky right-0 bg-slate-900 z-10 min-w-[280px] shadow-[-6px_0_12px_-4px_rgba(0,0,0,0.3)]">Actions & Deletion</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -963,15 +1112,15 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                           </td>
                         </tr>
                       ) : (
-                        filteredBusinessOwners.map((biz) => {
+                        filteredBusinessOwners.map((biz, idx) => {
                           const ownerUser = users.find((u) => u.id === biz.ownerId || u.businessId === biz.id);
-                          const ownerIdDisplay = biz.ownerId || ownerUser?.id || `BO-${biz.id.replace('SHOP-', '')}`;
+                          const ownerIdDisplay = biz.ownerId || ownerUser?.id || `BO-${(biz.id || '').replace('SHOP-', '')}`;
                           const bProducts = db.getProducts(biz.id);
                           const bSales = db.getSales(biz.id);
                           const bRev = bSales.reduce((acc, s) => acc + s.totalAmount, 0);
 
                           return (
-                            <tr key={biz.id} className="hover:bg-slate-50/80 transition-colors">
+                            <tr key={biz.id ? `bo-${biz.id}-${idx}` : `bo-idx-${idx}`} className="hover:bg-slate-50/80 transition-colors">
                               {/* Unique Business Owner ID */}
                               <td className="py-3.5 px-4 font-mono">
                                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200/80 text-blue-900 font-bold text-[11px]">
@@ -1004,7 +1153,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
                               {/* Owner Name & Contact */}
                               <td className="py-3.5 px-4">
-                                <div className="font-semibold text-slate-900 text-xs">{biz.ownerName}</div>
+                                <div className="font-semibold text-slate-900 text-xs">{biz.ownerName || ownerUser?.name || 'Store Owner'}</div>
                                 <div className="text-[11px] text-slate-500">{biz.email}</div>
                                 {biz.phone && <div className="text-[10px] text-slate-400">{biz.phone}</div>}
                               </td>
@@ -1025,8 +1174,8 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                                 {formatDate(biz.createdAt)}
                               </td>
 
-                              {/* Actions */}
-                              <td className="py-3.5 px-4 text-right pr-6">
+                              {/* Actions - Sticky Right Column */}
+                              <td className="py-3.5 px-4 text-right pr-6 sticky right-0 bg-white/95 backdrop-blur-xs z-10 shadow-[-6px_0_12px_-4px_rgba(0,0,0,0.08)]">
                                 <div className="flex items-center justify-end gap-1.5">
                                   {/* Switch to workspace */}
                                   <button
@@ -1149,7 +1298,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse min-w-[1020px]">
+                <table className="w-full text-left text-xs border-collapse min-w-[960px]">
                   <thead>
                     <tr className="bg-slate-900 text-slate-200 text-[11px] font-bold uppercase tracking-wider">
                       <th className="py-3.5 px-4">Business / Store</th>
@@ -1158,17 +1307,17 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                       <th className="py-3.5 px-4 text-center">Products</th>
                       <th className="py-3.5 px-4 text-center">Total Sales</th>
                       <th className="py-3.5 px-4 text-center">Status</th>
-                      <th className="py-3.5 px-4 text-right pr-6 min-w-[280px]">Actions & Deletion</th>
+                      <th className="py-3.5 px-4 text-right pr-6 sticky right-0 bg-slate-900 z-10 min-w-[280px] shadow-[-6px_0_12px_-4px_rgba(0,0,0,0.3)]">Actions & Deletion</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
-                    {filteredBusinesses.map((biz) => {
+                    {filteredBusinesses.map((biz, idx) => {
                       const bProducts = db.getProducts(biz.id);
                       const bSales = db.getSales(biz.id);
                       const bRev = bSales.reduce((acc, s) => acc + s.totalAmount, 0);
 
                       return (
-                        <tr key={biz.id} className="hover:bg-slate-50">
+                        <tr key={biz.id ? `biz-${biz.id}-${idx}` : `biz-idx-${idx}`} className="hover:bg-slate-50">
                           <td className="py-3.5 px-4">
                             <span className="font-bold text-slate-900 text-sm block">{biz.name}</span>
                             <span className="text-[11px] text-slate-400">{biz.address || 'Address not set'}</span>
@@ -1189,7 +1338,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                           <td className="py-3.5 px-4 text-center">
                             {statusBadge(biz.status || 'active')}
                           </td>
-                          <td className="py-3.5 px-4 text-right pr-6">
+                          <td className="py-3.5 px-4 text-right pr-6 sticky right-0 bg-white/95 backdrop-blur-xs z-10 shadow-[-6px_0_12px_-4px_rgba(0,0,0,0.08)]">
                             <div className="flex items-center justify-end gap-1.5">
                               <button
                                 onClick={() => onSwitchToBusiness(biz)}
@@ -1223,6 +1372,212 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                         </tr>
                       );
                     })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ------------------------------------------------------------- */}
+        {/* TAB: PRODUCTS CATALOG MANAGEMENT                             */}
+        {/* ------------------------------------------------------------- */}
+        {activeAdminTab === 'products' && (
+          <div className="space-y-6">
+            {/* Products Stats Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-5 bg-white rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-semibold text-slate-500 block">Total Catalog Items</span>
+                  <span className="text-3xl font-black text-slate-900 mt-1 block">{products.length}</span>
+                  <span className="text-[11px] text-purple-600 font-medium">All Stores Combined</span>
+                </div>
+                <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                  <Package className="w-6 h-6" />
+                </div>
+              </div>
+
+              <div className="p-5 bg-white rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-semibold text-slate-500 block">In-Stock Items</span>
+                  <span className="text-3xl font-black text-emerald-600 mt-1 block">
+                    {products.filter((p) => p.currentStock > (p.minStockLevel || 5)).length}
+                  </span>
+                  <span className="text-[11px] text-emerald-700 font-medium">Healthy inventory</span>
+                </div>
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+              </div>
+
+              <div className="p-5 bg-white rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-semibold text-slate-500 block">Low Stock Alerts</span>
+                  <span className="text-3xl font-black text-amber-600 mt-1 block">
+                    {products.filter((p) => p.currentStock > 0 && p.currentStock <= (p.minStockLevel || 5)).length}
+                  </span>
+                  <span className="text-[11px] text-amber-700 font-medium">Needs replenishment</span>
+                </div>
+                <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+              </div>
+
+              <div className="p-5 bg-white rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-semibold text-slate-500 block">Out of Stock</span>
+                  <span className="text-3xl font-black text-rose-600 mt-1 block">
+                    {products.filter((p) => p.currentStock <= 0).length}
+                  </span>
+                  <span className="text-[11px] text-rose-700 font-medium">Unavailable for sale</span>
+                </div>
+                <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                  <XCircle className="w-6 h-6" />
+                </div>
+              </div>
+            </div>
+
+            {/* Products Table */}
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="p-6 border-b border-slate-100 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900">Multi-Store Product Inventory</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Super Admin level oversight and management across all vendor and store catalogs
+                    </p>
+                  </div>
+                </div>
+
+                {/* Search & Filter Bar */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="relative flex-1 min-w-[240px]">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search by product name, SKU, barcode, category..."
+                      value={productSearchQuery}
+                      onChange={(e) => setProductSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-purple-500 focus:bg-white transition-all"
+                    />
+                    {productSearchQuery && (
+                      <button
+                        onClick={() => setProductSearchQuery('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Filter className="w-3.5 h-3.5 text-slate-400 hidden sm:inline" />
+                    <select
+                      value={productStoreFilter}
+                      onChange={(e) => setProductStoreFilter(e.target.value)}
+                      className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                    >
+                      <option value="ALL">All Store Catalogs ({products.length})</option>
+                      {businesses.map((b, idx) => (
+                        <option key={b.id ? `b-filter-${b.id}-${idx}` : `b-filter-idx-${idx}`} value={b.id}>
+                          {b.name} ({products.filter((p) => p.businessId === b.id).length})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse min-w-[780px]">
+                  <thead>
+                    <tr className="bg-slate-900 text-slate-200 text-[11px] font-bold uppercase tracking-wider">
+                      <th className="py-3.5 px-4">Product</th>
+                      <th className="py-3.5 px-4">SKU / Code</th>
+                      <th className="py-3.5 px-4">Store Workspace</th>
+                      <th className="py-3.5 px-4 text-right">Price</th>
+                      <th className="py-3.5 px-4 text-center">Stock Level</th>
+                      <th className="py-3.5 px-4 text-right pr-6 sticky right-0 bg-slate-900 z-10 min-w-[130px] shadow-[-6px_0_12px_-4px_rgba(0,0,0,0.3)]">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {filteredProducts.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-slate-400">
+                          <Package className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+                          <p className="text-sm font-semibold">No products found</p>
+                          <p className="text-xs text-slate-400 mt-1">Try adjusting your search query or store filter</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredProducts.map((p, idx) => {
+                        const biz = businesses.find((b) => b.id === p.businessId);
+                        const isLowStock = p.currentStock > 0 && p.currentStock <= (p.minStockLevel || 5);
+                        const isOutOfStock = p.currentStock <= 0;
+
+                        return (
+                          <tr key={p.id ? `prod-${p.id}-${idx}` : `prod-idx-${idx}`} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3.5 px-4">
+                              <div className="flex items-center gap-3">
+                                {p.imageUrl ? (
+                                  <img
+                                    src={p.imageUrl}
+                                    alt={p.name}
+                                    className="w-10 h-10 rounded-xl object-cover border border-slate-200 shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 border border-purple-100">
+                                    <Package className="w-5 h-5" />
+                                  </div>
+                                )}
+                                <div>
+                                  <span className="font-bold text-slate-900 block text-xs">{p.name || 'Unnamed Product'}</span>
+                                  <span className="text-[10px] text-slate-400">{p.category || 'General'}</span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4 font-mono">
+                              <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold text-[11px]">
+                                {p.sku || 'N/A'}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <div>
+                                <span className="font-semibold text-slate-800 text-xs block">{biz?.name || p.businessName || 'Store'}</span>
+                                <span className="text-[10px] font-mono text-slate-400">ID: {p.businessId}</span>
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">
+                              {formatCurrency(p.sellingPrice, biz?.currencySymbol || '৳')}
+                            </td>
+                            <td className="py-3.5 px-4 text-center">
+                              <span
+                                className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${
+                                  isOutOfStock
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : isLowStock
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-emerald-100 text-emerald-800'
+                                }`}
+                              >
+                                {p.currentStock} in stock
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 text-right pr-6 sticky right-0 bg-white/95 backdrop-blur-xs z-10 shadow-[-6px_0_12px_-4px_rgba(0,0,0,0.08)]">
+                              <button
+                                onClick={() => setProductToDelete(p)}
+                                title="Permanently Delete Product"
+                                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-xs rounded-xl transition-colors cursor-pointer inline-flex items-center gap-1.5 border border-rose-200 shadow-2xs"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Delete</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -1331,8 +1686,8 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                     className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700"
                   >
                     <option value="ALL">All Stores</option>
-                    {businesses.map((b) => (
-                      <option key={b.id} value={b.id}>
+                    {businesses.map((b, idx) => (
+                      <option key={b.id ? `b-ord-${b.id}-${idx}` : `b-ord-idx-${idx}`} value={b.id}>
                         {b.name}
                       </option>
                     ))}
@@ -1341,7 +1696,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
+                <table className="w-full text-left text-xs border-collapse min-w-[780px]">
                   <thead>
                     <tr className="bg-slate-900 text-slate-200 text-[11px] font-bold uppercase tracking-wider">
                       <th className="py-3.5 px-4">Order Ref #</th>
@@ -1350,27 +1705,27 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                       <th className="py-3.5 px-4">Items / Total</th>
                       <th className="py-3.5 px-4 text-center">Status</th>
                       <th className="py-3.5 px-4">Date</th>
-                      <th className="py-3.5 px-4 text-right">Action</th>
+                      <th className="py-3.5 px-4 text-right sticky right-0 bg-slate-900 z-10 min-w-[130px] shadow-[-6px_0_12px_-4px_rgba(0,0,0,0.3)]">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
                     {orders
                       .filter((o) => {
-                        const q = orderSearchQuery.toLowerCase();
-                        const orderNum = o.orderId || o.id;
+                        const q = (orderSearchQuery || '').toLowerCase().trim();
+                        const orderNum = o.orderId || o.id || '';
                         const storeName = o.storeNameSnapshot || o.businessNameSnapshot || '';
                         const matchesSearch =
                           !q ||
                           orderNum.toLowerCase().includes(q) ||
-                          o.customerName.toLowerCase().includes(q) ||
-                          o.customerPhone.toLowerCase().includes(q) ||
+                          (o.customerName || '').toLowerCase().includes(q) ||
+                          (o.customerPhone || '').toLowerCase().includes(q) ||
                           storeName.toLowerCase().includes(q);
                         const matchesStatus = orderStatusFilter === 'ALL' || o.orderStatus === orderStatusFilter;
                         const matchesBiz = orderBusinessFilter === 'ALL' || (o.storeId === orderBusinessFilter || o.businessId === orderBusinessFilter);
                         return matchesSearch && matchesStatus && matchesBiz;
                       })
-                      .map((o) => (
-                        <tr key={o.id} className="hover:bg-slate-50">
+                      .map((o, idx) => (
+                        <tr key={o.id ? `ord-${o.id}-${idx}` : `ord-idx-${idx}`} className="hover:bg-slate-50">
                           <td className="py-3.5 px-4 font-mono font-bold text-purple-700">
                             {o.orderId || o.id}
                           </td>
@@ -1392,13 +1747,22 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                             </span>
                           </td>
                           <td className="py-3.5 px-4 text-slate-500">{formatDate(o.createdAt)}</td>
-                          <td className="py-3.5 px-4 text-right">
-                            <button
-                              onClick={() => setInspectOrder(o)}
-                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs transition-colors cursor-pointer"
-                            >
-                              Inspect
-                            </button>
+                          <td className="py-3.5 px-4 text-right sticky right-0 bg-white/95 backdrop-blur-xs z-10 shadow-[-6px_0_12px_-4px_rgba(0,0,0,0.08)]">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => setInspectOrder(o)}
+                                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs transition-colors cursor-pointer"
+                              >
+                                Inspect
+                              </button>
+                              <button
+                                onClick={() => setOrderToDelete(o)}
+                                title="Delete Order"
+                                className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-xs transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1443,9 +1807,9 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                     <p className="text-xs font-semibold">No support tickets match the current filter.</p>
                   </div>
                 ) : (
-                  filteredTickets.map((ticket) => (
+                  filteredTickets.map((ticket, idx) => (
                     <div
-                      key={ticket.id}
+                      key={ticket.id ? `ticket-${ticket.id}-${idx}` : `ticket-idx-${idx}`}
                       className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-4"
                     >
                       <div className="space-y-1">
@@ -1639,7 +2003,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 mb-4 space-y-2 text-xs">
               <div className="flex justify-between">
                 <span className="text-slate-500">User Name:</span>
-                <span className="font-bold text-slate-900">{userToDelete.name}</span>
+                <span className="font-bold text-slate-900">{userToDelete.name || userToDelete.email || 'User'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Email Address:</span>
@@ -1896,7 +2260,6 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   <option value="cashier">Cashier / POS Operator</option>
                   <option value="manager">Store Manager</option>
                   <option value="business_owner">Business Owner</option>
-                  <option value="super_admin">Super Administrator</option>
                 </select>
               </div>
 
@@ -1909,8 +2272,8 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-purple-500 cursor-pointer"
                   >
                     <option value="">Select a store...</option>
-                    {businesses.map((b) => (
-                      <option key={b.id} value={b.id}>
+                    {businesses.map((b, idx) => (
+                      <option key={b.id ? `b-assign-${b.id}-${idx}` : `b-assign-idx-${idx}`} value={b.id}>
                         {b.name} ({b.id})
                       </option>
                     ))}
@@ -2032,6 +2395,146 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------- */}
+      {/* MODAL: CONFIRM PERMANENT DELETE PRODUCT                             */}
+      {/* ------------------------------------------------------------------- */}
+      {productToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-rose-200 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="inline-block px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 font-extrabold text-[10px] tracking-wider uppercase mb-1">
+                  Super Admin Deletion
+                </span>
+                <h3 className="text-lg font-black text-slate-900 leading-tight">Delete Product?</h3>
+              </div>
+            </div>
+
+            <p className="text-xs text-rose-600 font-semibold mb-4 leading-relaxed">
+              Caution: Permanently deleting this product will remove it from the store catalog, public marketplace, and inventory tracking.
+            </p>
+
+            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 mb-5 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Product Name:</span>
+                <span className="font-bold text-slate-900">{productToDelete.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">SKU:</span>
+                <span className="font-mono font-bold text-purple-700">{productToDelete.sku}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Store Workspace:</span>
+                <span className="font-mono text-slate-800">{productToDelete.businessId}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Current Stock:</span>
+                <span className="font-bold text-slate-900">{productToDelete.currentStock} units</span>
+              </div>
+            </div>
+
+            {actionError && (
+              <div className="p-3 mb-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+                {actionError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={() => setProductToDelete(null)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={handleConfirmDeleteProduct}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isProcessing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                Yes, Delete Product
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------- */}
+      {/* MODAL: CONFIRM PERMANENT DELETE ORDER                               */}
+      {/* ------------------------------------------------------------------- */}
+      {orderToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-rose-200 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="inline-block px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 font-extrabold text-[10px] tracking-wider uppercase mb-1">
+                  Super Admin Deletion
+                </span>
+                <h3 className="text-lg font-black text-slate-900 leading-tight">Delete Order?</h3>
+              </div>
+            </div>
+
+            <p className="text-xs text-rose-600 font-semibold mb-4 leading-relaxed">
+              Caution: Permanently deleting this order will remove it from all merchant order queues and customer tracking.
+            </p>
+
+            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 mb-5 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Order ID:</span>
+                <span className="font-mono font-bold text-purple-700">{orderToDelete.orderId || orderToDelete.id}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Customer:</span>
+                <span className="font-bold text-slate-900">{orderToDelete.customerName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Total Amount:</span>
+                <span className="font-bold text-slate-900">৳{orderToDelete.totalAmount}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Status:</span>
+                <span className="font-bold uppercase text-slate-800">{orderToDelete.orderStatus}</span>
+              </div>
+            </div>
+
+            {actionError && (
+              <div className="p-3 mb-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+                {actionError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={() => setOrderToDelete(null)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={handleConfirmDeleteOrder}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isProcessing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                Yes, Delete Order
+              </button>
+            </div>
           </div>
         </div>
       )}

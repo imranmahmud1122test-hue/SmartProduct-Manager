@@ -66,7 +66,8 @@ export async function exportElementAsPDF(
     });
 
     pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
-    const pdfName = filename.toLowerCase().endsWith('.pdf') ? filename : `${filename}.pdf`;
+    const safeName = filename || 'document';
+    const pdfName = safeName.toLowerCase().endsWith('.pdf') ? safeName : `${safeName}.pdf`;
     pdf.save(pdfName);
   } catch (err) {
     console.error('Error rendering PDF with html2canvas:', err);
@@ -142,7 +143,8 @@ export function generateSaleReceiptPDF(
     // Items
     doc.setFont('courier', 'normal');
     sale.items.forEach((item) => {
-      const name = item.productName.length > 22 ? item.productName.substring(0, 20) + '..' : item.productName;
+      const pName = item.productName || 'Item';
+      const name = pName.length > 22 ? pName.substring(0, 20) + '..' : pName;
       doc.text(name, 5, y);
       doc.text(formatCurrency(item.subtotal, currency), 75, y, { align: 'right' });
       y += 4;

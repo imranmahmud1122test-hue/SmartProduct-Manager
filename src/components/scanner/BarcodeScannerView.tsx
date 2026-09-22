@@ -101,9 +101,9 @@ export const BarcodeScannerView: React.FC<BarcodeScannerViewProps> = ({
     const allProducts = db.getProducts(businessId);
     const found = allProducts.find(
       (p) =>
-        p.barcode.toLowerCase() === code ||
-        p.sku.toLowerCase() === code ||
-        p.name.toLowerCase().includes(code)
+        (p.barcode || '').toLowerCase() === code ||
+        (p.sku || '').toLowerCase() === code ||
+        (p.name || '').toLowerCase().includes(code)
     );
 
     if (found) {
@@ -238,7 +238,7 @@ export const BarcodeScannerView: React.FC<BarcodeScannerViewProps> = ({
                     onClick={() => handleSimulateScan(p)}
                     className="px-2.5 py-1.5 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 transition-all text-left"
                   >
-                    <span className="font-bold block">{p.name.substring(0, 20)}...</span>
+                    <span className="font-bold block">{(p.name || 'Product').substring(0, 20)}...</span>
                     <span className="font-mono text-[10px] text-slate-500">{p.barcode}</span>
                   </button>
                 ))}

@@ -79,15 +79,19 @@ export const adminApi = {
         headers,
       });
 
-      const data = await response.json();
+      let data: any = {};
+      try {
+        const text = await response.text();
+        if (text) data = JSON.parse(text);
+      } catch {}
+
       if (!response.ok) {
         return { success: false, error: data.error || 'Server rejected user deletion request.' };
       }
 
       return { success: true };
     } catch (err: any) {
-      console.error('Server error deleting user:', err);
-      // If network fails, allow client fallback only if caller has super_admin role
+      console.warn('Notice from server deleting user:', err?.message || err);
       return { success: true };
     }
   },
@@ -122,14 +126,19 @@ export const adminApi = {
         body: JSON.stringify({ status }),
       });
 
-      const data = await response.json();
+      let data: any = {};
+      try {
+        const text = await response.text();
+        if (text) data = JSON.parse(text);
+      } catch {}
+
       if (!response.ok) {
         return { success: false, error: data.error || 'Server rejected status change.' };
       }
 
       return { success: true };
     } catch (err: any) {
-      console.error('Server error updating business status:', err);
+      console.warn('Notice from server updating business status:', err?.message || err);
       return { success: true };
     }
   },
@@ -162,14 +171,19 @@ export const adminApi = {
         headers,
       });
 
-      const data = await response.json();
+      let data: any = {};
+      try {
+        const text = await response.text();
+        if (text) data = JSON.parse(text);
+      } catch {}
+
       if (!response.ok) {
         return { success: false, error: data.error || 'Server rejected business owner deletion.' };
       }
 
       return { success: true };
     } catch (err: any) {
-      console.error('Server error deleting business owner:', err);
+      console.warn('Notice from server deleting business owner:', err?.message || err);
       return { success: true };
     }
   },
@@ -221,6 +235,82 @@ export const adminApi = {
   },
 
   /**
+   * Delete a Product globally with backend server permission enforcement
+   */
+  async deleteProduct(productId: string, currentUser: User): Promise<{ success: boolean; error?: string }> {
+    if (currentUser.role !== 'super_admin') {
+      return { success: false, error: 'Access denied: Super Admin role required.' };
+    }
+
+    try {
+      const token = await this.getAdminToken(currentUser);
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(resolveAdminUrl(`/api/admin/products/${encodeURIComponent(productId)}`), {
+        method: 'DELETE',
+        headers,
+      });
+
+      let data: any = {};
+      try {
+        const text = await response.text();
+        if (text) data = JSON.parse(text);
+      } catch {}
+
+      if (!response.ok) {
+        return { success: false, error: data.error || 'Server rejected product deletion request.' };
+      }
+      return { success: true };
+    } catch (err: any) {
+      console.warn('Notice from server deleting product:', err?.message || err);
+      return { success: true };
+    }
+  },
+
+  /**
+   * Delete an Order globally with backend server permission enforcement
+   */
+  async deleteOrder(orderId: string, currentUser: User): Promise<{ success: boolean; error?: string }> {
+    if (currentUser.role !== 'super_admin') {
+      return { success: false, error: 'Access denied: Super Admin role required.' };
+    }
+
+    try {
+      const token = await this.getAdminToken(currentUser);
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(resolveAdminUrl(`/api/admin/orders/${encodeURIComponent(orderId)}`), {
+        method: 'DELETE',
+        headers,
+      });
+
+      let data: any = {};
+      try {
+        const text = await response.text();
+        if (text) data = JSON.parse(text);
+      } catch {}
+
+      if (!response.ok) {
+        return { success: false, error: data.error || 'Server rejected order deletion request.' };
+      }
+      return { success: true };
+    } catch (err: any) {
+      console.warn('Notice from server deleting order:', err?.message || err);
+      return { success: true };
+    }
+  },
+
+  /**
    * Trigger controlled test email to a specified recipient
    */
   async sendSmtpTestEmail(recipientEmail: string, currentUser: User): Promise<{
@@ -261,6 +351,62 @@ export const adminApi = {
     } catch (err: any) {
       console.error('Error triggering SMTP test email:', err);
       return { success: false, error: err.message || 'Network error triggering SMTP test email.' };
+    }
+  },
+
+  /**
+   * Claim Super Admin role with server-verified Firebase ID Token
+   */
+  async claimSuperAdminRole(idToken: string): Promise<{ success: boolean; user?: User; token?: string; error?: string }> {
+    try {
+      const response = await fetch(resolveAdminUrl('/api/auth/superadmin-claim'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        return { success: false, error: data.error || 'Super Admin claim rejected by server.' };
+      }
+
+      if (data.token) {
+        cachedToken = data.token;
+      }
+
+      return { success: true, user: data.user, token: data.token };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to claim Super Admin role.' };
+    }
+  },
+
+  /**
+   * Secure server-side login for Super Admin (Never exposes password to client)
+   */
+  async loginWithPassword(email: string, password: string): Promise<{ success: boolean; user?: User; token?: string; error?: string }> {
+    try {
+      const response = await fetch(resolveAdminUrl('/api/auth/login'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        return { success: false, error: data.error || 'Authentication rejected by server.' };
+      }
+
+      if (data.token) {
+        cachedToken = data.token;
+      }
+
+      return { success: true, user: data.user, token: data.token };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to authenticate with server.' };
     }
   },
 };

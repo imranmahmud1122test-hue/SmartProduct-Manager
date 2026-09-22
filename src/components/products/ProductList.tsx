@@ -154,11 +154,11 @@ export const ProductList: React.FC<ProductListProps> = ({
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const matchName = p.name.toLowerCase().includes(q);
-      const matchSku = p.sku.toLowerCase().includes(q);
-      const matchBarcode = p.barcode.toLowerCase().includes(q);
-      const matchBrand = p.brand?.toLowerCase().includes(q);
-      const matchSupplier = p.supplier?.toLowerCase().includes(q);
+      const matchName = (p.name || '').toLowerCase().includes(q);
+      const matchSku = (p.sku || '').toLowerCase().includes(q);
+      const matchBarcode = (p.barcode || '').toLowerCase().includes(q);
+      const matchBrand = (p.brand || '').toLowerCase().includes(q);
+      const matchSupplier = (p.supplier || '').toLowerCase().includes(q);
       if (!matchName && !matchSku && !matchBarcode && !matchBrand && !matchSupplier) return false;
     }
 

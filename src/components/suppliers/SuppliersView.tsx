@@ -114,7 +114,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({ businessId }) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
-      s.name.toLowerCase().includes(q) ||
+      (s.name || '').toLowerCase().includes(q) ||
       s.contactPerson?.toLowerCase().includes(q) ||
       s.phone?.toLowerCase().includes(q) ||
       s.email?.toLowerCase().includes(q)
@@ -169,7 +169,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({ businessId }) => {
         ) : (
           filtered.map((sup) => {
             const suppliedProducts = products.filter(
-              (p) => p.supplier?.toLowerCase() === sup.name.toLowerCase()
+              (p) => (p.supplier || '').toLowerCase() === (sup.name || '').toLowerCase()
             );
 
             return (

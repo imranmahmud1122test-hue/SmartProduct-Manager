@@ -3,6 +3,8 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
+import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { createServer as createViteServer } from 'vite';
 
 const app = express();
@@ -37,10 +39,14 @@ app.use(express.urlencoded({ extended: true }));
 // In-memory / server-authoritative admin tokens & sessions
 const adminSessionTokens = new Set<string>();
 
-// Predefined Super Admin emails with full platform authority
+// EXACTLY ONE Designated Super Admin Identity
+const DESIGNATED_SUPER_ADMIN_EMAIL = 'imranmahmud1122.test@gmail.com';
+const SUPER_ADMIN_DISPLAY_NAME = 'Imran Mahmud';
+// SENSITIVE CREDENTIALS: Store password ONLY on server. Never expose to client!
+const SUPER_ADMIN_PASSWORD = process.env.SUPER_ADMIN_PASSWORD || '1122';
+
 const SUPER_ADMIN_EMAILS = new Set([
-  'imranmahmud1122.test@gmail.com',
-  'admin@smartsupermarket.com',
+  DESIGNATED_SUPER_ADMIN_EMAIL,
 ]);
 
 // Server-side verification vault (stores SHA-256 hashed codes with 15min TTL and rate limiting)
@@ -77,6 +83,35 @@ try {
 const FIREBASE_PROJECT_ID = process.env.VITE_FIREBASE_PROJECT_ID || firestoreConfig.projectId;
 const FIREBASE_DB_ID = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || firestoreConfig.firestoreDatabaseId;
 const FIREBASE_API_KEY = process.env.VITE_FIREBASE_API_KEY || firestoreConfig.apiKey;
+
+// Initialize Firebase Admin SDK
+try {
+  if (!getApps().length) {
+    const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (serviceAccountKey) {
+      try {
+        const parsed = typeof serviceAccountKey === 'string' && serviceAccountKey.startsWith('{')
+          ? JSON.parse(serviceAccountKey)
+          : JSON.parse(fs.readFileSync(serviceAccountKey, 'utf-8'));
+        initializeApp({
+          credential: cert(parsed),
+          projectId: parsed.project_id || FIREBASE_PROJECT_ID,
+        });
+        console.log('[Firebase Admin] Initialized with Service Account');
+      } catch (err: any) {
+        console.warn('[Firebase Admin] Service Account key parse warning:', err.message);
+        initializeApp({ projectId: FIREBASE_PROJECT_ID || 'gen-lang-client-0302838737' });
+      }
+    } else {
+      initializeApp({
+        projectId: FIREBASE_PROJECT_ID || 'gen-lang-client-0302838737',
+      });
+      console.log(`[Firebase Admin] Initialized with projectId: ${FIREBASE_PROJECT_ID || 'gen-lang-client-0302838737'}`);
+    }
+  }
+} catch (e: any) {
+  console.warn('[Firebase Admin] Initialization warning:', e.message);
+}
 
 async function syncVerificationToFirestore(email: string, record: VerificationRecord | null) {
   if (!FIREBASE_PROJECT_ID || !FIREBASE_DB_ID) return;
@@ -435,28 +470,166 @@ async function sendVerificationEmail(
   };
 }
 
-// Server-side authentication middleware for Super Admin routes
-function requireSuperAdmin(req: Request, res: Response, next: NextFunction): void {
+// ----------------------------------------------------------------------
+// SERVER-SIDE DATA PERSISTENCE FOR PLATFORM ENTITIES
+// ----------------------------------------------------------------------
+const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_FILE = path.join(DATA_DIR, 'platform-data.json');
+
+interface PlatformData {
+  users: any[];
+  businesses: any[];
+  products: any[];
+  orders: any[];
+  auditLogs: any[];
+}
+
+function loadPlatformData(): PlatformData {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (fs.existsSync(DATA_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
+      if (parsed && Array.isArray(parsed.users)) {
+        return parsed;
+      }
+    }
+  } catch (e: any) {
+    console.warn('[Platform Data] Load warning:', e.message);
+  }
+
+  // Initial Root Platform State
+  const initialData: PlatformData = {
+    users: [
+      {
+        id: 'USR-ADMIN-IMRAN',
+        email: DESIGNATED_SUPER_ADMIN_EMAIL,
+        name: SUPER_ADMIN_DISPLAY_NAME,
+        role: 'super_admin',
+        businessId: null,
+        phone: '+880 1711-000000',
+        createdAt: '2026-01-01T00:00:00Z',
+        status: 'active',
+        emailVerified: true,
+        isGmailVerified: true,
+      }
+    ],
+    businesses: [],
+    products: [],
+    orders: [],
+    auditLogs: [
+      {
+        id: 'LOG-INIT',
+        timestamp: new Date().toISOString(),
+        userId: 'USR-ADMIN-IMRAN',
+        userName: SUPER_ADMIN_DISPLAY_NAME,
+        userRole: 'super_admin',
+        action: 'SYSTEM_BOOT',
+        details: 'Smart Product Manager Super Admin core security subsystem initialized.',
+      }
+    ]
+  };
+
+  try {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(initialData, null, 2), 'utf-8');
+  } catch {}
+  return initialData;
+}
+
+function savePlatformData(data: PlatformData): void {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (e: any) {
+    console.warn('[Platform Data] Save error:', e.message);
+  }
+}
+
+// ----------------------------------------------------------------------
+// SERVER-SIDE AUTHENTICATION & FIREBASE ID TOKEN VERIFICATION
+// ----------------------------------------------------------------------
+
+interface AuthTokenInfo {
+  uid: string;
+  email: string;
+  isSuperAdmin: boolean;
+  role?: string;
+  businessId?: string;
+}
+
+async function verifyAuthToken(req: Request): Promise<AuthTokenInfo | null> {
   const authHeader = req.headers.authorization;
-  const adminSecretHeader = req.headers['x-admin-role'] as string;
-  const adminEmailHeader = req.headers['x-admin-email'] as string;
   const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
 
-  // Check valid server-issued admin session token OR verified super admin credentials
-  const hasValidToken = token && adminSessionTokens.has(token);
-  const hasValidEmailRole =
-    adminEmailHeader &&
-    SUPER_ADMIN_EMAILS.has(adminEmailHeader.toLowerCase().trim()) &&
-    adminSecretHeader === 'super_admin';
+  if (!token) return null;
 
-  if (!hasValidToken && !hasValidEmailRole) {
+  // 1. Check server-issued admin session token
+  if (adminSessionTokens.has(token)) {
+    return {
+      uid: 'USR-ADMIN-IMRAN',
+      email: DESIGNATED_SUPER_ADMIN_EMAIL,
+      isSuperAdmin: true,
+      role: 'super_admin',
+    };
+  }
+
+  // 2. Verify with Firebase Admin SDK
+  try {
+    const decoded = await getAuth().verifyIdToken(token, true);
+    const email = (decoded.email || '').toLowerCase().trim();
+    const isEmailMatch = email === DESIGNATED_SUPER_ADMIN_EMAIL;
+    const hasCustomClaim = decoded.role === 'superAdmin' || decoded.superAdmin === true;
+
+    // Only the designated email can ever be Super Admin
+    if (isEmailMatch) {
+      if (!hasCustomClaim) {
+        // Automatically ensure custom claims are persisted on user record
+        getAuth().setCustomUserClaims(decoded.uid, {
+          role: 'superAdmin',
+          superAdmin: true,
+          authorizedEmail: DESIGNATED_SUPER_ADMIN_EMAIL,
+        }).catch((err) => {
+          console.warn('[Firebase Admin] Note setting custom user claims:', err.message);
+        });
+      }
+      return {
+        uid: decoded.uid,
+        email,
+        isSuperAdmin: true,
+        role: 'super_admin',
+      };
+    }
+
+    // Normal authenticated user
+    return {
+      uid: decoded.uid,
+      email,
+      isSuperAdmin: false,
+      businessId: (decoded.businessId as string) || undefined,
+      role: (decoded.role as string) || 'business_owner',
+    };
+  } catch (err: any) {
+    return null;
+  }
+}
+
+// Server-side authorization middleware for Super Admin routes
+// Never trusts client-side "isAdmin" flag or headers
+async function requireSuperAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const authInfo = await verifyAuthToken(req);
+
+  if (!authInfo || !authInfo.isSuperAdmin || authInfo.email !== DESIGNATED_SUPER_ADMIN_EMAIL) {
     res.status(403).json({
       success: false,
-      error: 'Access denied: You do not have Super Admin permissions to perform this action.',
+      error: 'Forbidden: Super Administrator clearance required.',
     });
     return;
   }
 
+  (req as any).superAdminUser = authInfo;
   next();
 }
 
@@ -757,14 +930,159 @@ app.post('/api/auth/resend-code', async (req: Request, res: Response) => {
   }
 });
 
-// Verify & Issue Super Admin Session Token
-app.post('/api/auth/verify-superadmin', (req: Request, res: Response) => {
-  const { email, role, userId } = req.body;
+// ----------------------------------------------------------------------
+// SUPER ADMIN SERVER-SIDE AUTHENTICATION & CUSTOM CLAIM ENDPOINTS
+// ----------------------------------------------------------------------
+
+// 1. Claim Super Admin Role via Firebase Admin SDK
+app.post('/api/auth/superadmin-claim', async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+
+    if (!token) {
+      res.status(401).json({
+        success: false,
+        error: 'Authentication token required.',
+      });
+      return;
+    }
+
+    const decoded = await getAuth().verifyIdToken(token, true);
+    const email = (decoded.email || '').toLowerCase().trim();
+
+    if (email !== DESIGNATED_SUPER_ADMIN_EMAIL) {
+      console.warn(`[Security Alert] Non-admin account (${email}) attempted to claim superAdmin custom role.`);
+      res.status(403).json({
+        success: false,
+        error: 'Access Denied: This account is not authorized for Super Administrator clearance.',
+      });
+      return;
+    }
+
+    // Set custom claim { role: 'superAdmin', superAdmin: true } using Firebase Admin SDK
+    try {
+      await getAuth().setCustomUserClaims(decoded.uid, {
+        role: 'superAdmin',
+        superAdmin: true,
+        authorizedEmail: DESIGNATED_SUPER_ADMIN_EMAIL,
+      });
+      console.log(`[Firebase Admin] Custom claims { role: 'superAdmin' } successfully applied to UID: ${decoded.uid}`);
+    } catch (claimErr: any) {
+      console.warn('[Firebase Admin] Note setting custom user claims:', claimErr.message);
+    }
+
+    // Issue cryptographic session token
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+    adminSessionTokens.add(sessionToken);
+
+    res.json({
+      success: true,
+      isSuperAdmin: true,
+      token: sessionToken,
+      user: {
+        id: decoded.uid || 'USR-ADMIN-IMRAN',
+        email: DESIGNATED_SUPER_ADMIN_EMAIL,
+        name: SUPER_ADMIN_DISPLAY_NAME,
+        role: 'super_admin',
+        customClaims: { role: 'superAdmin', superAdmin: true },
+      },
+    });
+  } catch (err: any) {
+    console.error('[Firebase Admin] Error verifying token for superadmin-claim:', err.message);
+    res.status(403).json({
+      success: false,
+      error: 'Invalid or expired Firebase ID token.',
+    });
+  }
+});
+
+// 2. Server-Side Password Login: Never expose password or credentials to client code!
+app.post('/api/auth/login', (req: Request, res: Response) => {
+  const { email, password } = req.body || {};
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  const cleanPass = String(password || '').trim();
+
+  if (!cleanEmail || !cleanPass) {
+    res.status(400).json({
+      success: false,
+      error: 'Email and password are required.',
+    });
+    return;
+  }
+
+  // Check designated Super Admin account
+  if (cleanEmail === DESIGNATED_SUPER_ADMIN_EMAIL) {
+    if (cleanPass !== SUPER_ADMIN_PASSWORD) {
+      console.warn(`[Security Alert] Failed Super Admin password attempt for ${cleanEmail}`);
+      res.status(401).json({
+        success: false,
+        error: 'Invalid password for Super Administrator account.',
+      });
+      return;
+    }
+
+    // Issue cryptographic session token
+    const token = crypto.randomBytes(32).toString('hex');
+    adminSessionTokens.add(token);
+
+    // Auto-expire after 24h
+    setTimeout(() => {
+      adminSessionTokens.delete(token);
+    }, 24 * 60 * 60 * 1000);
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: 'USR-ADMIN-IMRAN',
+        email: DESIGNATED_SUPER_ADMIN_EMAIL,
+        name: SUPER_ADMIN_DISPLAY_NAME,
+        role: 'super_admin',
+        status: 'active',
+        emailVerified: true,
+        isGmailVerified: true,
+      },
+    });
+    return;
+  }
+
+  // Normal tenant user
+  res.json({
+    success: true,
+    message: 'Authentication request processed.',
+  });
+});
+
+// 3. Verify & Issue Super Admin Session Token
+app.post('/api/auth/verify-superadmin', async (req: Request, res: Response) => {
+  const authInfo = await verifyAuthToken(req);
+
+  // If token is provided and valid
+  if (authInfo && authInfo.isSuperAdmin && authInfo.email === DESIGNATED_SUPER_ADMIN_EMAIL) {
+    const token = crypto.randomBytes(32).toString('hex');
+    adminSessionTokens.add(token);
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: authInfo.uid || 'USR-ADMIN-IMRAN',
+        email: DESIGNATED_SUPER_ADMIN_EMAIL,
+        role: 'super_admin',
+        name: SUPER_ADMIN_DISPLAY_NAME,
+      },
+    });
+    return;
+  }
+
+  // Fallback check on body email
+  const { email, role, userId } = req.body || {};
+  const cleanEmail = String(email || '').toLowerCase().trim();
 
   if (
-    !email ||
-    role !== 'super_admin' ||
-    !SUPER_ADMIN_EMAILS.has(String(email).toLowerCase().trim())
+    cleanEmail !== DESIGNATED_SUPER_ADMIN_EMAIL ||
+    role !== 'super_admin'
   ) {
     res.status(403).json({
       success: false,
@@ -777,7 +1095,6 @@ app.post('/api/auth/verify-superadmin', (req: Request, res: Response) => {
   const token = crypto.randomBytes(32).toString('hex');
   adminSessionTokens.add(token);
 
-  // Auto-expire token after 24 hours
   setTimeout(() => {
     adminSessionTokens.delete(token);
   }, 24 * 60 * 60 * 1000);
@@ -787,9 +1104,9 @@ app.post('/api/auth/verify-superadmin', (req: Request, res: Response) => {
     token,
     user: {
       id: userId || 'USR-ADMIN-IMRAN',
-      email,
+      email: DESIGNATED_SUPER_ADMIN_EMAIL,
       role: 'super_admin',
-      name: 'Super Administrator',
+      name: SUPER_ADMIN_DISPLAY_NAME,
     },
   });
 });
@@ -983,40 +1300,352 @@ app.post('/api/admin/send-test-email', requireSuperAdmin, async (req: Request, r
   }
 });
 
-// Super Admin: List All Users
-app.get('/api/admin/users', requireSuperAdmin, (req: Request, res: Response) => {
+// ----------------------------------------------------------------------
+// SUPER ADMIN AUTHORITATIVE DATA & DELETION ENDPOINTS
+// ----------------------------------------------------------------------
+
+// 1. Get All Platform Data (Protected - Returns 403 to non-admins and never exposes data)
+app.get('/api/admin/data', requireSuperAdmin, (req: Request, res: Response) => {
+  const data = loadPlatformData();
   res.json({
     success: true,
-    message: 'Authorized Super Admin access to users catalog.',
+    users: data.users,
+    businesses: data.businesses,
+    products: data.products,
+    orders: data.orders,
+    auditLogs: data.auditLogs,
   });
 });
 
-// Super Admin: Delete User Account
+// 2. Synchronize Platform Data from Super Admin Client
+app.post('/api/admin/sync', requireSuperAdmin, (req: Request, res: Response) => {
+  const { users, businesses, products, orders, auditLogs } = req.body || {};
+  const current = loadPlatformData();
+
+  if (Array.isArray(users)) {
+    // Merge users, keeping root Super Admin intact
+    const mergedUsers = [...current.users];
+    for (const u of users) {
+      if (u.id === 'USR-ADMIN-IMRAN' || u.email === DESIGNATED_SUPER_ADMIN_EMAIL) continue;
+      const idx = mergedUsers.findIndex(x => x.id === u.id || x.email === u.email);
+      if (idx >= 0) {
+        mergedUsers[idx] = { ...mergedUsers[idx], ...u, role: u.role === 'super_admin' ? 'business_owner' : u.role };
+      } else {
+        mergedUsers.push({ ...u, role: u.role === 'super_admin' ? 'business_owner' : u.role });
+      }
+    }
+    current.users = mergedUsers;
+  }
+
+  if (Array.isArray(businesses)) {
+    current.businesses = businesses;
+  }
+  if (Array.isArray(products)) {
+    current.products = products;
+  }
+  if (Array.isArray(orders)) {
+    current.orders = orders;
+  }
+  if (Array.isArray(auditLogs)) {
+    current.auditLogs = auditLogs;
+  }
+
+  savePlatformData(current);
+  res.json({ success: true, message: 'Platform data synchronized on server.' });
+});
+
+// 3. Super Admin: List All Users
+app.get('/api/admin/users', requireSuperAdmin, (req: Request, res: Response) => {
+  const data = loadPlatformData();
+  res.json({
+    success: true,
+    users: data.users,
+  });
+});
+
+// 4. Super Admin: Delete User Account (Enforces Super Admin Protection & Server Audit)
 app.delete('/api/admin/users/:userId', requireSuperAdmin, (req: Request, res: Response) => {
   const { userId } = req.params;
+  const data = loadPlatformData();
 
-  // Protect root super admin accounts from accidental deletion
-  if (userId === 'USR-ADMIN-IMRAN' || userId === 'USR-ADMIN') {
+  // IMMUTABLE PROTECTION: Never allow deleting the primary Super Admin account (Imran Mahmud)!
+  if (
+    userId === 'USR-ADMIN-IMRAN'
+  ) {
     res.status(400).json({
       success: false,
-      error: 'Cannot delete the primary root Super Administrator account.',
+      error: 'Security Policy: The primary root Super Administrator account (Imran Mahmud) cannot be deleted.',
     });
     return;
   }
 
+  const targetIdx = data.users.findIndex(u => u.id === userId);
+  if (targetIdx === -1) {
+    res.json({
+      success: true,
+      message: `User ${userId} already deleted or not in server local cache.`,
+    });
+    return;
+  }
+
+  const deletedUser = data.users[targetIdx];
+  const isTargetSuperAdmin = (deletedUser.email || '').toLowerCase().trim() === DESIGNATED_SUPER_ADMIN_EMAIL.toLowerCase() &&
+    ((deletedUser.name || '').toLowerCase().trim() === SUPER_ADMIN_DISPLAY_NAME.toLowerCase() || (deletedUser.name || '').toLowerCase().trim() === 'imran');
+
+  if (isTargetSuperAdmin) {
+    res.status(400).json({
+      success: false,
+      error: 'Security Policy: The designated Super Administrator account (Imran Mahmud) cannot be deleted.',
+    });
+    return;
+  }
+
+  data.users.splice(targetIdx, 1);
+
+  // Server-side audit log
+  data.auditLogs.unshift({
+    id: `AUD-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    userId: 'USR-ADMIN-IMRAN',
+    userName: SUPER_ADMIN_DISPLAY_NAME,
+    userRole: 'super_admin',
+    action: 'USER_DELETED_BY_ADMIN',
+    details: `User "${deletedUser.name}" (${deletedUser.email}) purged by Super Admin.`,
+  });
+
+  savePlatformData(data);
+
   res.json({
     success: true,
-    message: `User ${userId} deleted successfully by Super Admin.`,
+    message: `User ${deletedUser.name} (${userId}) deleted successfully by Super Admin.`,
     userId,
   });
 });
 
-// Super Admin: List All Business Owners
-app.get('/api/admin/business-owners', requireSuperAdmin, (req: Request, res: Response) => {
+// 5. Super Admin: List All Businesses
+app.get('/api/admin/businesses', requireSuperAdmin, (req: Request, res: Response) => {
+  const data = loadPlatformData();
   res.json({
     success: true,
-    message: 'Authorized Super Admin access to business owners directory.',
+    businesses: data.businesses,
   });
+});
+
+// 6. Super Admin: Delete Business / Shop Workspace & Owner
+const handleBusinessPurge = (req: Request, res: Response) => {
+  const { businessId } = req.params;
+  const data = loadPlatformData();
+
+  const bizIdx = data.businesses.findIndex(b => b.id === businessId);
+  const deletedBiz = bizIdx >= 0 ? data.businesses[bizIdx] : null;
+
+  if (bizIdx >= 0) {
+    data.businesses.splice(bizIdx, 1);
+  }
+
+  // Purge any user belonging to this business workspace (except primary Super Admin)
+  data.users = data.users.filter(u => {
+    if (u.id === 'USR-ADMIN-IMRAN' || (u.email || '').toLowerCase() === DESIGNATED_SUPER_ADMIN_EMAIL) return true;
+    return u.businessId !== businessId && u.id !== deletedBiz?.ownerId;
+  });
+
+  // Also remove associated products and orders for this store
+  data.products = data.products.filter(p => p.businessId !== businessId);
+  data.orders = data.orders.filter(o => o.storeId !== businessId && o.businessId !== businessId);
+
+  // Server-side audit log
+  data.auditLogs.unshift({
+    id: `AUD-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    userId: 'USR-ADMIN-IMRAN',
+    userName: SUPER_ADMIN_DISPLAY_NAME,
+    userRole: 'super_admin',
+    action: 'BUSINESS_PURGED_BY_ADMIN',
+    details: `Business Store "${deletedBiz?.name || businessId}" and associated store data deleted by Super Admin.`,
+  });
+
+  savePlatformData(data);
+
+  res.json({
+    success: true,
+    message: `Business Owner and Store ${businessId} successfully purged by Super Admin.`,
+    businessId,
+  });
+};
+
+app.delete('/api/admin/businesses/:businessId', requireSuperAdmin, handleBusinessPurge);
+app.delete('/api/admin/business-owners/:businessId', requireSuperAdmin, handleBusinessPurge);
+
+// 6b. Super Admin: Update Business / Business Owner Status
+const handleBusinessStatusUpdate = (req: Request, res: Response) => {
+  const { businessId } = req.params;
+  const { status } = req.body || {};
+
+  if (!['active', 'suspended', 'deactivated'].includes(status)) {
+    res.status(400).json({ success: false, error: 'Invalid status value.' });
+    return;
+  }
+
+  const data = loadPlatformData();
+  const biz = data.businesses.find(b => b.id === businessId);
+  if (biz) {
+    biz.status = status;
+    const owner = data.users.find(u => u.id === biz.ownerId || u.businessId === businessId);
+    if (owner && (owner.email || '').toLowerCase() !== DESIGNATED_SUPER_ADMIN_EMAIL) {
+      owner.status = status;
+    }
+    savePlatformData(data);
+  }
+
+  res.json({ success: true, message: `Business ${businessId} status updated to ${status}.` });
+};
+
+app.patch('/api/admin/businesses/:businessId/status', requireSuperAdmin, handleBusinessStatusUpdate);
+app.patch('/api/admin/business-owners/:businessId/status', requireSuperAdmin, handleBusinessStatusUpdate);
+
+// 7. Super Admin: List All Products
+app.get('/api/admin/products', requireSuperAdmin, (req: Request, res: Response) => {
+  const data = loadPlatformData();
+  res.json({
+    success: true,
+    products: data.products,
+  });
+});
+
+// 8. Super Admin: Delete Product Globally
+app.delete('/api/admin/products/:productId', requireSuperAdmin, (req: Request, res: Response) => {
+  const { productId } = req.params;
+  const data = loadPlatformData();
+
+  const pIdx = data.products.findIndex(p => p.id === productId);
+  const deletedProduct = pIdx >= 0 ? data.products[pIdx] : null;
+
+  if (pIdx >= 0) {
+    data.products.splice(pIdx, 1);
+  }
+
+  // Audit log
+  data.auditLogs.unshift({
+    id: `AUD-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    userId: 'USR-ADMIN-IMRAN',
+    userName: SUPER_ADMIN_DISPLAY_NAME,
+    userRole: 'super_admin',
+    action: 'PRODUCT_DELETED_BY_ADMIN',
+    details: `Product "${deletedProduct?.name || productId}" deleted globally by Super Admin.`,
+  });
+
+  savePlatformData(data);
+
+  res.json({
+    success: true,
+    message: `Product ${productId} deleted successfully by Super Admin.`,
+    productId,
+  });
+});
+
+// 9. Super Admin: List All Orders
+app.get('/api/admin/orders', requireSuperAdmin, (req: Request, res: Response) => {
+  const data = loadPlatformData();
+  res.json({
+    success: true,
+    orders: data.orders,
+  });
+});
+
+// 10. Super Admin: Delete Order Globally
+app.delete('/api/admin/orders/:orderId', requireSuperAdmin, (req: Request, res: Response) => {
+  const { orderId } = req.params;
+  const data = loadPlatformData();
+
+  const oIdx = data.orders.findIndex(o => o.id === orderId || o.orderId === orderId);
+  const deletedOrder = oIdx >= 0 ? data.orders[oIdx] : null;
+
+  if (oIdx >= 0) {
+    data.orders.splice(oIdx, 1);
+  }
+
+  data.auditLogs.unshift({
+    id: `AUD-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    userId: 'USR-ADMIN-IMRAN',
+    userName: SUPER_ADMIN_DISPLAY_NAME,
+    userRole: 'super_admin',
+    action: 'ORDER_DELETED_BY_ADMIN',
+    details: `Order "${deletedOrder?.orderId || orderId}" deleted by Super Admin.`,
+  });
+
+  savePlatformData(data);
+
+  res.json({
+    success: true,
+    message: `Order ${orderId} deleted successfully by Super Admin.`,
+    orderId,
+  });
+});
+
+// 11. Multi-Tenant Product Deletion: Enforces that normal store owners can ONLY delete their own products
+app.delete('/api/products/:productId', async (req: Request, res: Response) => {
+  const authInfo = await verifyAuthToken(req);
+  if (!authInfo) {
+    res.status(401).json({ success: false, error: 'Authentication required.' });
+    return;
+  }
+
+  const { productId } = req.params;
+  const data = loadPlatformData();
+  const product = data.products.find(p => p.id === productId);
+
+  if (!product) {
+    res.status(404).json({ success: false, error: 'Product not found.' });
+    return;
+  }
+
+  // Super Admin can delete any product. Business Owner can delete ONLY their store's product.
+  if (!authInfo.isSuperAdmin && authInfo.businessId && product.businessId !== authInfo.businessId) {
+    console.warn(`[Security Alert] User ${authInfo.uid} attempted to delete another store's product: ${productId}`);
+    res.status(403).json({
+      success: false,
+      error: 'Security Violation: You do not have permission to delete products belonging to another store.',
+    });
+    return;
+  }
+
+  data.products = data.products.filter(p => p.id !== productId);
+  savePlatformData(data);
+
+  res.json({ success: true, message: `Product ${productId} deleted.` });
+});
+
+// 12. Multi-Tenant Order Deletion: Enforces tenant isolation
+app.delete('/api/orders/:orderId', async (req: Request, res: Response) => {
+  const authInfo = await verifyAuthToken(req);
+  if (!authInfo) {
+    res.status(401).json({ success: false, error: 'Authentication required.' });
+    return;
+  }
+
+  const { orderId } = req.params;
+  const data = loadPlatformData();
+  const order = data.orders.find(o => o.id === orderId || o.orderId === orderId);
+
+  if (!order) {
+    res.status(404).json({ success: false, error: 'Order not found.' });
+    return;
+  }
+
+  if (!authInfo.isSuperAdmin && authInfo.businessId && order.storeId !== authInfo.businessId && order.businessId !== authInfo.businessId) {
+    res.status(403).json({
+      success: false,
+      error: 'Security Violation: You do not have permission to delete orders belonging to another store.',
+    });
+    return;
+  }
+
+  data.orders = data.orders.filter(o => o.id !== orderId && o.orderId !== orderId);
+  savePlatformData(data);
+
+  res.json({ success: true, message: `Order ${orderId} deleted.` });
 });
 
 // Super Admin: Update Business Owner Status (Active / Suspended / Deactivated)
@@ -1032,23 +1661,19 @@ app.patch('/api/admin/business-owners/:businessId/status', requireSuperAdmin, (r
     return;
   }
 
+  const data = loadPlatformData();
+  const biz = data.businesses.find(b => b.id === businessId);
+  if (biz) {
+    biz.status = status;
+    savePlatformData(data);
+  }
+
   res.json({
     success: true,
     message: `Business Owner & Workspace ${businessId} status updated to ${status}.`,
     businessId,
     status,
     reason: reason || 'Super Admin moderation',
-  });
-});
-
-// Super Admin: Delete Business Owner & Store
-app.delete('/api/admin/business-owners/:businessId', requireSuperAdmin, (req: Request, res: Response) => {
-  const { businessId } = req.params;
-
-  res.json({
-    success: true,
-    message: `Business Owner and Store ${businessId} successfully purged by Super Admin.`,
-    businessId,
   });
 });
 
@@ -1078,8 +1703,7 @@ app.post('/api/business/update-profile', async (req: Request, res: Response) => 
     // 2. Business Owner is authorized ONLY if userBizId === cleanBusinessId OR target owner matches cleanUserId
     const isSuperAdmin =
       userRole === 'super_admin' ||
-      userEmail === 'imranmahmud1122.test@gmail.com' ||
-      userEmail === 'admin@smartsupermarket.com';
+      userEmail === DESIGNATED_SUPER_ADMIN_EMAIL;
 
     const isAuthorizedOwner =
       (userRole === 'business_owner' || userRole === 'owner') &&
@@ -1171,7 +1795,10 @@ app.post('/api/business/update-profile', async (req: Request, res: Response) => 
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: false,
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);

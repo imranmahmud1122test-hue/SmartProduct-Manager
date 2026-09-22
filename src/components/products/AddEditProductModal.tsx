@@ -178,7 +178,7 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
   };
 
   const handleGenerateRandomSku = () => {
-    const prefix = category.substring(0, 3).toUpperCase();
+    const prefix = (category || 'GEN').substring(0, 3).toUpperCase();
     const newSku = `${prefix}-${Math.floor(1000 + Math.random() * 9000)}`;
     setSku(newSku);
   };

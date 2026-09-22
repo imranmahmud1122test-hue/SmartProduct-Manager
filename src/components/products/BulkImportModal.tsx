@@ -241,8 +241,8 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
         }
 
         const existingProducts = db.getProducts(businessId);
-        const existingSkus = new Set(existingProducts.map(p => p.sku.trim().toLowerCase()));
-        const existingBarcodes = new Set(existingProducts.filter(p => p.barcode).map(p => p.barcode.trim().toLowerCase()));
+        const existingSkus = new Set(existingProducts.map(p => (p.sku || '').trim().toLowerCase()));
+        const existingBarcodes = new Set(existingProducts.filter(p => p.barcode).map(p => (p.barcode || '').trim().toLowerCase()));
 
         const rows: ParsedRow[] = [];
 

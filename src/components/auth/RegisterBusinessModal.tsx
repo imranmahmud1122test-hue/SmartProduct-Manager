@@ -101,6 +101,9 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
       if (authResult.displayName && !ownerName) {
         setOwnerName(authResult.displayName);
       }
+      if (authResult.email && !manualEmail) {
+        setManualEmail(authResult.email);
+      }
       if (authResult.photoURL && !logoUrl) {
         setLogoPreview(authResult.photoURL);
         setLogoUrl(authResult.photoURL);
@@ -108,7 +111,11 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
       setIsGoogleLoading(false);
     } catch (err: any) {
       setIsGoogleLoading(false);
-      setError(err.message || 'Google Authentication failed. Please try again.');
+      if (err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain')) {
+        setError('Google Sign-In popup is pending domain authorization on this host. You can register and verify your Gmail address directly below.');
+      } else {
+        setError(err.message || 'Google Authentication failed. Please try again.');
+      }
     }
   };
 
@@ -146,60 +153,64 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
       return;
     }
 
-    let activeGoogleUser = googleUser;
+    const activeGoogleUser = googleUser;
+    const cleanEmail = (activeGoogleUser?.email || manualEmail || '').trim().toLowerCase();
 
-    // If user hasn't authenticated via Google button yet, initiate Google authentication
-    if (!activeGoogleUser) {
-      setIsLoading(true);
-      setLoadingStep('Connecting to Google Authentication...');
-      try {
-        activeGoogleUser = await signInWithGooglePopup();
-        setGoogleUser(activeGoogleUser);
-        if (activeGoogleUser.displayName && !ownerName) {
-          setOwnerName(activeGoogleUser.displayName);
-        }
-        if (activeGoogleUser.photoURL && !logoUrl) {
-          setLogoPreview(activeGoogleUser.photoURL);
-          setLogoUrl(activeGoogleUser.photoURL);
-        }
-      } catch (authErr: any) {
-        setIsLoading(false);
-        setError(authErr.message || 'Please authenticate with your Google Account to complete store registration.');
-        return;
-      }
-    }
-
-    if (!activeGoogleUser || !activeGoogleUser.uid || typeof activeGoogleUser.uid !== 'string' || !activeGoogleUser.uid.trim()) {
-      setIsLoading(false);
-      setError('Invalid Google Authentication: missing user UID. Please click "Authenticate with Google Account" again.');
+    if (!cleanEmail) {
+      setError('Please provide your Gmail or Account Email address.');
       return;
     }
 
-    const finalOwnerName = ownerName.trim() || activeGoogleUser.displayName || 'Store Owner';
+    if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+
+    const finalOwnerName = ownerName.trim() || activeGoogleUser?.displayName || cleanEmail.split('@')[0] || 'Store Owner';
 
     setIsLoading(true);
     setLoadingStep('Provisioning your store workspace & database partition...');
 
     try {
-      // Authenticated with real Google OAuth UID
-      const { user, business } = await db.registerBusinessWithGoogle({
-        googleUser: {
-          email: activeGoogleUser.email,
-          displayName: finalOwnerName,
-          photoURL: activeGoogleUser.photoURL,
-          uid: activeGoogleUser.uid.trim(),
-        },
-        businessName: businessName.trim(),
-        phone: phone.trim() || undefined,
-        address: address.trim() || 'Dhaka, Bangladesh',
-        businessType,
-        currencySymbol: currencySymbol.trim() || '৳',
-        logoUrl: logoUrl.trim() || undefined,
-      });
+      if (activeGoogleUser && activeGoogleUser.uid) {
+        // Authenticated with Google OAuth popup UID
+        const { user, business } = await db.registerBusinessWithGoogle({
+          googleUser: {
+            email: activeGoogleUser.email,
+            displayName: finalOwnerName,
+            photoURL: activeGoogleUser.photoURL,
+            uid: activeGoogleUser.uid.trim(),
+          },
+          businessName: businessName.trim(),
+          phone: phone.trim() || undefined,
+          address: address.trim() || 'Dhaka, Bangladesh',
+          businessType,
+          currencySymbol: currencySymbol.trim() || '৳',
+          logoUrl: logoUrl.trim() || undefined,
+        });
 
-      setIsLoading(false);
-      onClose();
-      onSuccess(business, user);
+        setIsLoading(false);
+        onClose();
+        onSuccess(business, user);
+      } else {
+        // Direct Registration with Gmail or Account Email
+        const { user, business } = await db.registerBusiness({
+          ownerName: finalOwnerName,
+          businessName: businessName.trim(),
+          email: cleanEmail,
+          password: manualPassword || '123456',
+          phone: phone.trim() || undefined,
+          address: address.trim() || 'Dhaka, Bangladesh',
+          businessType,
+          currencySymbol: currencySymbol.trim() || '৳',
+          logoUrl: logoUrl.trim() || undefined,
+          authProvider: cleanEmail.endsWith('@gmail.com') ? 'google' : 'password',
+        });
+
+        setIsLoading(false);
+        onClose();
+        onSuccess(business, user);
+      }
     } catch (err: any) {
       setIsLoading(false);
       setError(err.message || 'Workspace registration failed.');
@@ -239,11 +250,11 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
             </div>
           )}
 
-          {/* Section 1: Google Authentication Verification */}
+          {/* Section 1: Google Authentication Verification & Account Setup */}
           <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                1. Owner Identity Verification
+                1. Owner Identity & Verification
               </span>
               {googleUser && (
                 <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
@@ -286,10 +297,7 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
                 </button>
               </div>
             ) : (
-              <div>
-                <p className="text-xs text-slate-600 mb-3">
-                  Connect your real Google account to verify ownership and activate your supermarket workspace.
-                </p>
+              <div className="space-y-3">
                 <button
                   id="btn-register-google"
                   type="button"
@@ -305,10 +313,57 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
                   ) : (
                     <>
                       <GoogleIcon className="w-4 h-4 shrink-0" />
-                      <span className="text-xs">Authenticate with Google Account</span>
+                      <span className="text-xs">One-Click Google Sign-In Verification</span>
                     </>
                   )}
                 </button>
+
+                <div className="flex items-center gap-3">
+                  <div className="h-px bg-slate-200 flex-1" />
+                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                    Or Register With Your Gmail / Email Directly
+                  </span>
+                  <div className="h-px bg-slate-200 flex-1" />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Owner Gmail / Email Address <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        id="input-reg-email"
+                        type="email"
+                        required
+                        disabled={isLoading}
+                        placeholder="yourname@gmail.com"
+                        value={manualEmail}
+                        onChange={(e) => setManualEmail(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Account Password <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        id="input-reg-password"
+                        type="password"
+                        required
+                        disabled={isLoading}
+                        placeholder="Create password (e.g. 123456)"
+                        value={manualPassword}
+                        onChange={(e) => setManualPassword(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -435,33 +490,6 @@ export const RegisterBusinessModal: React.FC<RegisterBusinessModalProps> = ({
                   />
                 </div>
               </div>
-
-              {/* If not connected with Google, allow entering manual email */}
-              {!googleUser && (
-                <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Account Email</label>
-                    <input
-                      type="email"
-                      required
-                      placeholder="owner@yourstore.com"
-                      value={manualEmail}
-                      onChange={(e) => setManualEmail(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Password</label>
-                    <input
-                      type="password"
-                      placeholder="Create account password"
-                      value={manualPassword}
-                      onChange={(e) => setManualPassword(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white"
-                    />
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 

@@ -1,0 +1,57 @@
+{
+  "users": [
+    {
+      "id": "USR-ADMIN-IMRAN",
+      "email": "imranmahmud1122.test@gmail.com",
+      "name": "Imran Mahmud",
+      "role": "super_admin",
+      "businessId": null,
+      "phone": "+880 1711-000000",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "status": "active",
+      "emailVerified": true,
+      "isGmailVerified": true
+    }
+  ],
+  "businesses": [],
+  "products": [],
+  "orders": [],
+  "auditLogs": [
+    {
+      "id": "AUD-1790064733834",
+      "timestamp": "2026-09-22T08:12:13.834Z",
+      "userId": "USR-ADMIN-IMRAN",
+      "userName": "Imran Mahmud",
+      "userRole": "super_admin",
+      "action": "ORDER_DELETED_BY_ADMIN",
+      "details": "Order \"TEST_ORD_123\" deleted by Super Admin."
+    },
+    {
+      "id": "AUD-1790064731017",
+      "timestamp": "2026-09-22T08:12:11.017Z",
+      "userId": "USR-ADMIN-IMRAN",
+      "userName": "Imran Mahmud",
+      "userRole": "super_admin",
+      "action": "PRODUCT_DELETED_BY_ADMIN",
+      "details": "Product \"TEST_PROD_123\" deleted globally by Super Admin."
+    },
+    {
+      "id": "AUD-1790064725956",
+      "timestamp": "2026-09-22T08:12:05.956Z",
+      "userId": "USR-ADMIN-IMRAN",
+      "userName": "Imran Mahmud",
+      "userRole": "super_admin",
+      "action": "BUSINESS_PURGED_BY_ADMIN",
+      "details": "Business Store \"TEST_BIZ_123\" and associated store data deleted by Super Admin."
+    },
+    {
+      "id": "LOG-INIT",
+      "timestamp": "2026-09-22T08:03:28.991Z",
+      "userId": "USR-ADMIN-IMRAN",
+      "userName": "Imran Mahmud",
+      "userRole": "super_admin",
+      "action": "SYSTEM_BOOT",
+      "details": "Smart Product Manager Super Admin core security subsystem initialized."
+    }
+  ]
+}

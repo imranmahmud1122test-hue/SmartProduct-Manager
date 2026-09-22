@@ -15,7 +15,8 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { db } from '../../services/storage';
-import { signInWithGooglePopup, GoogleAuthResult } from '../../services/firebase';
+import { signInWithGooglePopup, GoogleAuthResult, firebaseAuth } from '../../services/firebase';
+import { adminApi } from '../../services/adminApi';
 import { User, Business } from '../../types';
 import { Logo } from '../common/Logo';
 
@@ -92,6 +93,18 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         return;
       }
 
+      // If designated Super Admin signed in via Google, claim Super Admin role with server
+      if (googleAuth.email.toLowerCase().trim() === 'imranmahmud1122.test@gmail.com') {
+        try {
+          const idToken = await firebaseAuth.currentUser?.getIdToken(true);
+          if (idToken) {
+            await adminApi.claimSuperAdminRole(idToken);
+          }
+        } catch (claimErr) {
+          console.warn('Super Admin claim request notice:', claimErr);
+        }
+      }
+
       if (loginResult.isNew || !loginResult.user) {
         // Real Google Account verified, but no store workspace registered yet -> Switch to register
         setIsGoogleLoading(false);
@@ -106,7 +119,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       onClose();
     } catch (err: any) {
       setIsGoogleLoading(false);
-      setError(err.message || 'Google Sign-In failed. Please try again.');
+      if (err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain')) {
+        setError('Google Sign-In popup is pending domain authorization on this host. You can log in directly with your registered Gmail and password below.');
+      } else {
+        setError(err.message || 'Google Sign-In failed. Please try again.');
+      }
     }
   };
 
@@ -136,12 +153,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     setIsLoading(true);
     setLoadingText('Verifying credentials & workspace access...');
 
-    // Short authorization delay
-    await new Promise((resolve) => setTimeout(resolve, 350));
-
-    // Automated Super Admin Check for imranmahmud1122.test@gmail.com with master password 1122
+    // Secure Super Admin Check handled exclusively via server-side verification
     if (cleanEmail === 'imranmahmud1122.test@gmail.com') {
-      if (cleanPass === '1122') {
+      try {
+        const serverAuth = await adminApi.loginWithPassword(cleanEmail, cleanPass);
+        if (!serverAuth.success) {
+          setIsLoading(false);
+          setError(serverAuth.error || 'Invalid credentials for Super Administrator account.');
+          return;
+        }
+
         let superAdminUser = db.findUserByEmail('imranmahmud1122.test@gmail.com');
         if (!superAdminUser) {
           superAdminUser = {
@@ -157,6 +178,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             isGmailVerified: true,
           };
         }
+        superAdminUser.name = 'Imran Mahmud';
         superAdminUser.role = 'super_admin';
         superAdminUser.status = 'active';
         superAdminUser.emailVerified = true;
@@ -168,19 +190,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           userName: superAdminUser.name,
           userRole: 'super_admin',
           action: 'USER_LOGIN',
-          details: 'User authenticated with platform authorization',
+          details: 'Super Administrator authenticated via secure server authorization',
         });
         setIsLoading(false);
         onSuccess(superAdminUser);
         onClose();
         return;
-      }
-
-      // If not 1122, check if user registered as a tenant/business owner
-      const registeredUser = db.findUserByEmail(cleanEmail);
-      if (!registeredUser) {
+      } catch (authErr: any) {
         setIsLoading(false);
-        setError('Incorrect password for this account. Use 1122 for Super Admin access or sign in with Google.');
+        setError(authErr.message || 'Authentication failed. Please verify your credentials.');
         return;
       }
     }

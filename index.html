@@ -3,6 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
+    <script>
+      (function() {
+        var isWsError = function(e) {
+          if (!e) return false;
+          var str = String(e.message || e.reason?.message || e.reason || e || '');
+          return str.indexOf('WebSocket') !== -1 || str.indexOf('[vite]') !== -1 || str.indexOf('websocket') !== -1;
+        };
+        window.addEventListener('unhandledrejection', function(event) {
+          if (isWsError(event.reason)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+        window.addEventListener('error', function(event) {
+          if (isWsError(event.message) || isWsError(event.error)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+      })();
+    </script>
     <meta name="google-site-verification" content="IaZ9tc2anGk9NHZryZpbvE1jazq90HixHWM5V0Qz-V4" />
     <title>Smart Product Manager (SPM) | Smart Stock, Smart Business</title>
     <meta name="description" content="SPM - Smart Product Manager | Multi-Tenant Supermarket Inventory, Product Catalog, Barcode/QR, POS & Sales Management Web Platform." />

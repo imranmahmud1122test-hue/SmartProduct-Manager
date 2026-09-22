@@ -1,5 +1,6 @@
 import {
   User,
+  UserRole,
   Business,
   Product,
   InventoryMovement,
@@ -106,24 +107,12 @@ const INITIAL_SUPPORT_TICKETS: SupportTicket[] = [
   }
 ];
 
-// Seed Initial Data
+// Seed Initial Data: EXACTLY ONE Super Admin Account
 const INITIAL_USERS: User[] = [
   {
     id: 'USR-ADMIN-IMRAN',
     email: 'imranmahmud1122.test@gmail.com',
     name: 'Imran Mahmud',
-    role: 'super_admin',
-    businessId: null,
-    phone: '+880 1711-000000',
-    createdAt: '2026-01-01T00:00:00Z',
-    status: 'active',
-    emailVerified: true,
-    isGmailVerified: true,
-  },
-  {
-    id: 'USR-ADMIN',
-    email: 'admin@smartsupermarket.com',
-    name: 'Super Administrator',
     role: 'super_admin',
     businessId: null,
     phone: '+880 1711-000000',
@@ -240,15 +229,15 @@ const DEMO_PRODUCT_IDS = new Set([
   'PROD-201', 'PROD-202'
 ]);
 
-const isDemoProduct = (p: { id?: string; ownerId?: string }): boolean =>
-  DEMO_PRODUCT_IDS.has(p.id || '') || p.ownerId === 'USR-METRO' || p.ownerId === 'USR-VALLEY';
+const isDemoProduct = (p?: { id?: string; ownerId?: string } | null): boolean =>
+  Boolean(p && (DEMO_PRODUCT_IDS.has(p.id || '') || p.ownerId === 'USR-METRO' || p.ownerId === 'USR-VALLEY'));
 
-const isDemoUser = (u: { id?: string; email?: string }): boolean =>
-  u.id === 'USR-METRO' || u.id === 'USR-VALLEY' || u.email === 'owner@metro.com' || u.email === 'owner@freshvalley.com';
+const isDemoUser = (u?: { id?: string; email?: string } | null): boolean =>
+  Boolean(u && (u.id === 'USR-METRO' || u.id === 'USR-VALLEY' || u.email === 'owner@metro.com' || u.email === 'owner@freshvalley.com'));
 
-const isDemoBusiness = (b: { id?: string; ownerId?: string; name?: string }): boolean =>
-  b.ownerId === 'USR-METRO' || b.ownerId === 'USR-VALLEY' ||
-  b.name === 'Metro Supermarket & Mart' || b.name === 'Fresh Valley Organic Market';
+const isDemoBusiness = (b?: { id?: string; ownerId?: string; name?: string } | null): boolean =>
+  Boolean(b && (b.ownerId === 'USR-METRO' || b.ownerId === 'USR-VALLEY' ||
+  b.name === 'Metro Supermarket & Mart' || b.name === 'Fresh Valley Organic Market'));
 
 let isFirestoreSyncActive = false;
 
@@ -271,7 +260,8 @@ export async function syncWithFirestore(): Promise<void> {
       if (!prodSnap.empty) {
         const cloudProducts: Product[] = [];
         prodSnap.forEach((docSnap) => {
-          const p = docSnap.data() as Product;
+          const data = docSnap.data() as Product;
+          const p = { ...data, id: data?.id || docSnap.id };
           if (!isDemoProduct(p)) {
             cloudProducts.push(p);
           }
@@ -295,7 +285,8 @@ export async function syncWithFirestore(): Promise<void> {
       if (!bizSnap.empty) {
         const cloudBiz: Business[] = [];
         bizSnap.forEach((docSnap) => {
-          const b = docSnap.data() as Business;
+          const data = docSnap.data() as Business;
+          const b = { ...data, id: data?.id || docSnap.id };
           if (!isDemoBusiness(b)) {
             cloudBiz.push(b);
           }
@@ -316,7 +307,8 @@ export async function syncWithFirestore(): Promise<void> {
       if (!ordSnap.empty) {
         const cloudOrders: Order[] = [];
         ordSnap.forEach((docSnap) => {
-          const o = docSnap.data() as Order;
+          const data = docSnap.data() as Order;
+          const o = { ...data, id: data?.id || docSnap.id };
           if (o.businessId !== 'SHOP-001' && o.customerEmail !== 'tanvir@gmail.com' && o.customerEmail !== 'sumaiya@yahoo.com') {
             cloudOrders.push(o);
           }
@@ -337,8 +329,12 @@ export async function syncWithFirestore(): Promise<void> {
       if (!usrSnap.empty) {
         const cloudUsers: User[] = [];
         usrSnap.forEach((docSnap) => {
-          const u = docSnap.data() as User;
-          if (!isDemoUser(u)) {
+          const data = docSnap.data() as User;
+          const u = { ...data, id: data?.id || docSnap.id };
+          if (u && !isDemoUser(u)) {
+            if (!u.name || typeof u.name !== 'string') {
+              u.name = u.email ? u.email.split('@')[0] : 'User';
+            }
             cloudUsers.push(u);
           }
         });
@@ -358,7 +354,8 @@ export async function syncWithFirestore(): Promise<void> {
       if (!movSnap.empty) {
         const cloudMovs: InventoryMovement[] = [];
         movSnap.forEach((docSnap) => {
-          const m = docSnap.data() as InventoryMovement;
+          const data = docSnap.data() as InventoryMovement;
+          const m = { ...data, id: data?.id || docSnap.id };
           if (!DEMO_PRODUCT_IDS.has(m.productId) && m.performedBy !== 'USR-METRO' && m.performedBy !== 'USR-VALLEY') {
             cloudMovs.push(m);
           }
@@ -379,7 +376,8 @@ export async function syncWithFirestore(): Promise<void> {
       if (!saleSnap.empty) {
         const cloudSales: Sale[] = [];
         saleSnap.forEach((docSnap) => {
-          const s = docSnap.data() as Sale;
+          const data = docSnap.data() as Sale;
+          const s = { ...data, id: data?.id || docSnap.id };
           if (s.cashierId !== 'USR-METRO' && s.cashierId !== 'USR-VALLEY') {
             cloudSales.push(s);
           }
@@ -401,7 +399,8 @@ export async function syncWithFirestore(): Promise<void> {
         if (!snapshot.empty) {
           const liveProducts: Product[] = [];
           snapshot.forEach((docSnap) => {
-            const p = docSnap.data() as Product;
+            const data = docSnap.data() as Product;
+            const p = { ...data, id: data?.id || docSnap.id };
             if (!isDemoProduct(p)) {
               liveProducts.push(p);
             }
@@ -424,7 +423,8 @@ export async function syncWithFirestore(): Promise<void> {
         if (!snapshot.empty) {
           const liveBusinesses: Business[] = [];
           snapshot.forEach((docSnap) => {
-            const b = docSnap.data() as Business;
+            const data = docSnap.data() as Business;
+            const b = { ...data, id: data?.id || docSnap.id };
             if (!isDemoBusiness(b)) {
               liveBusinesses.push(b);
             }
@@ -445,7 +445,8 @@ export async function syncWithFirestore(): Promise<void> {
         if (!snapshot.empty) {
           const liveOrders: Order[] = [];
           snapshot.forEach((docSnap) => {
-            const o = docSnap.data() as Order;
+            const data = docSnap.data() as Order;
+            const o = { ...data, id: data?.id || docSnap.id };
             if (o.businessId !== 'SHOP-001' && o.customerEmail !== 'tanvir@gmail.com' && o.customerEmail !== 'sumaiya@yahoo.com') {
               liveOrders.push(o);
             }
@@ -466,8 +467,12 @@ export async function syncWithFirestore(): Promise<void> {
         if (!snapshot.empty) {
           const liveUsers: User[] = [];
           snapshot.forEach((docSnap) => {
-            const u = docSnap.data() as User;
-            if (!isDemoUser(u)) {
+            const data = docSnap.data() as User;
+            const u = { ...data, id: data?.id || docSnap.id };
+            if (u && !isDemoUser(u)) {
+              if (!u.name || typeof u.name !== 'string') {
+                u.name = u.email ? u.email.split('@')[0] : 'User';
+              }
               liveUsers.push(u);
             }
           });
@@ -486,7 +491,8 @@ export async function syncWithFirestore(): Promise<void> {
       (snapshot) => {
         const liveMovements: InventoryMovement[] = [];
         snapshot.forEach((docSnap) => {
-          const m = docSnap.data() as InventoryMovement;
+          const data = docSnap.data() as InventoryMovement;
+          const m = { ...data, id: data?.id || docSnap.id };
           if (!DEMO_PRODUCT_IDS.has(m.productId) && m.performedBy !== 'USR-METRO' && m.performedBy !== 'USR-VALLEY') {
             liveMovements.push(m);
           }
@@ -506,7 +512,8 @@ export async function syncWithFirestore(): Promise<void> {
         if (!snapshot.empty) {
           const liveSales: Sale[] = [];
           snapshot.forEach((docSnap) => {
-            const s = docSnap.data() as Sale;
+            const data = docSnap.data() as Sale;
+            const s = { ...data, id: data?.id || docSnap.id };
             if (s.cashierId !== 'USR-METRO' && s.cashierId !== 'USR-VALLEY') {
               liveSales.push(s);
             }
@@ -569,7 +576,7 @@ export function initializeStorage(): void {
       const existingUsers: User[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]');
       let updated = false;
       INITIAL_USERS.forEach((initUser) => {
-        if (!existingUsers.some((u) => u.email.toLowerCase() === initUser.email.toLowerCase())) {
+        if (!existingUsers.some((u) => (u?.email || '').toLowerCase() === (initUser.email || '').toLowerCase())) {
           existingUsers.push(initUser);
           updated = true;
         }
@@ -655,14 +662,47 @@ export function initializeStorage(): void {
 
 let cachedProductsInMemory: Product[] | null = null;
 
+export const isTrueSuperAdmin = (u: { email?: string; name?: string } | null | undefined): boolean => {
+  if (!u) return false;
+  const cleanEmail = (u.email || '').trim().toLowerCase();
+  const cleanName = (u.name || '').trim().toLowerCase();
+  return cleanEmail === 'imranmahmud1122.test@gmail.com' && (cleanName === 'imran mahmud' || cleanName === 'imran');
+};
+
 // Data Access Layer (Repository)
 export const db = {
   // Authentication & Session
   getCurrentUser(): User | null {
-    return getFromStorage<User | null>(STORAGE_KEYS.CURRENT_USER, null);
+    let user = getFromStorage<User | null>(STORAGE_KEYS.CURRENT_USER, null);
+    if (!user) return null;
+    const cleanEmail = (user.email || '').trim().toLowerCase();
+    const cleanName = (user.name || '').trim().toLowerCase();
+
+    // If current session is super_admin:
+    if (user.role === 'super_admin') {
+      // ONLY Imran Mahmud with imranmahmud1122.test@gmail.com is Super Admin!
+      if (cleanEmail === 'imranmahmud1122.test@gmail.com') {
+        // If the local session name had accidentally been set to 'Ahad', restore it to 'Imran Mahmud'
+        if (cleanName !== 'imran mahmud' && cleanName !== 'imran') {
+          user = { ...user, id: 'USR-ADMIN-IMRAN', name: 'Imran Mahmud', role: 'super_admin' };
+          this.setCurrentUser(user);
+          return user;
+        }
+      } else {
+        const downgraded = { ...user, role: 'business_owner' as const };
+        this.setCurrentUser(downgraded);
+        return downgraded;
+      }
+    }
+    return user;
   },
 
   setCurrentUser(user: User | null): void {
+    if (user) {
+      if (user.role === 'super_admin' && !isTrueSuperAdmin(user)) {
+        user = { ...user, role: 'business_owner' as const };
+      }
+    }
     setToStorage(STORAGE_KEYS.CURRENT_USER, user);
   },
 
@@ -673,19 +713,68 @@ export const db = {
   getUsers(): User[] {
     const list = getFromStorage<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
     let updated = false;
-    const sanitized = list
-      .filter((u) => u.email.toLowerCase() !== 'cashier@metro.com' && u.id !== 'USR-METRO-CASHIER')
-      .map((u) => {
-        if (u.status === 'pending' || u.emailVerified === false) {
+
+    const resultUsers: User[] = [];
+    let hasSuperAdminImran = false;
+
+    for (const u of (list || [])) {
+      if (!u || (u?.email || '').toLowerCase() === 'cashier@metro.com' || u?.id === 'USR-METRO-CASHIER') {
+        updated = true;
+        continue;
+      }
+
+      const isImran = isTrueSuperAdmin(u);
+      const cleanName = (u.name || '').trim().toLowerCase();
+
+      if (isImran) {
+        hasSuperAdminImran = true;
+        resultUsers.push({
+          ...u,
+          id: 'USR-ADMIN-IMRAN',
+          name: 'Imran Mahmud',
+          email: 'imranmahmud1122.test@gmail.com',
+          role: 'super_admin' as const,
+          businessId: null,
+          status: 'active' as const,
+          emailVerified: true,
+          isGmailVerified: true,
+        });
+      } else {
+        // Any account that is NOT Imran Mahmud (e.g. Ahad or any other registered user):
+        let userCopy = { ...u };
+        // Never allow non-Imran Mahmud to hold USR-ADMIN-IMRAN ID or super_admin role!
+        if (userCopy.id === 'USR-ADMIN-IMRAN') {
+          userCopy.id = `USR-USER-${Math.abs(cleanName.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)) || 'AHAD'}`;
           updated = true;
-          return { ...u, status: 'active' as const, emailVerified: true, isGmailVerified: true };
         }
-        return u;
-      });
-    if (updated || sanitized.length !== list.length) {
-      setToStorage(STORAGE_KEYS.USERS, sanitized);
+        if (userCopy.role === 'super_admin') {
+          userCopy.role = 'business_owner' as const;
+          updated = true;
+        }
+        resultUsers.push(userCopy);
+      }
     }
-    return sanitized;
+
+    if (!hasSuperAdminImran) {
+      resultUsers.unshift({
+        id: 'USR-ADMIN-IMRAN',
+        email: 'imranmahmud1122.test@gmail.com',
+        name: 'Imran Mahmud',
+        role: 'super_admin',
+        businessId: null,
+        phone: '+880 1711-000000',
+        createdAt: '2026-01-01T00:00:00Z',
+        status: 'active',
+        emailVerified: true,
+        isGmailVerified: true,
+      });
+      updated = true;
+    }
+
+    if (updated || resultUsers.length !== (list || []).length) {
+      setToStorage(STORAGE_KEYS.USERS, resultUsers);
+    }
+    return resultUsers;
   },
 
   addUser(userData: {
@@ -698,14 +787,18 @@ export const db = {
   }): User {
     const users = this.getUsers();
     const cleanEmail = (userData.email || '').trim().toLowerCase();
-    const isSuperAdmin = userData.role === 'super_admin' || cleanEmail === 'imranmahmud1122.test@gmail.com';
+    // STRICT POLICY: Only Imran Mahmud with imranmahmud1122.test@gmail.com can be super_admin. Nobody else can ever be super_admin.
+    const isSuperAdmin = isTrueSuperAdmin(userData);
+    const assignedRole: UserRole = isSuperAdmin
+      ? 'super_admin'
+      : (userData.role === 'super_admin' ? 'business_owner' : userData.role);
 
     const newUser: User = {
       id: `USR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
       email: cleanEmail,
       name: userData.name,
-      role: userData.role,
-      businessId: userData.businessId,
+      role: assignedRole,
+      businessId: assignedRole === 'super_admin' ? null : userData.businessId,
       phone: userData.phone || '',
       createdAt: new Date().toISOString(),
       status: 'active',
@@ -724,36 +817,17 @@ export const db = {
   },
 
   findUserByEmail(email: string): User | undefined {
+    if (!email) return undefined;
     const clean = email.trim().toLowerCase();
     const users = this.getUsers();
-    const found = users.find((u) => u.email.toLowerCase() === clean);
 
-    if (found) {
-      if (clean === 'imranmahmud1122.test@gmail.com' && found.role !== 'super_admin') {
-        found.role = 'super_admin';
-        setToStorage(STORAGE_KEYS.USERS, users);
-      }
-      return found;
-    }
-
-    // Auto-create Super Admin if imranmahmud1122.test@gmail.com
+    // If searching for super admin email, return the true Imran Mahmud Super Admin
     if (clean === 'imranmahmud1122.test@gmail.com') {
-      const superAdminUser: User = {
-        id: 'USR-ADMIN-IMRAN',
-        email: 'imranmahmud1122.test@gmail.com',
-        name: 'Imran Mahmud',
-        role: 'super_admin',
-        businessId: null,
-        phone: '+880 1711-000000',
-        createdAt: new Date().toISOString(),
-        status: 'active',
-      };
-      users.push(superAdminUser);
-      setToStorage(STORAGE_KEYS.USERS, users);
-      return superAdminUser;
+      const imran = users.find((u) => isTrueSuperAdmin(u));
+      if (imran) return imran;
     }
 
-    return undefined;
+    return users.find((u) => (u?.email || '').toLowerCase() === clean);
   },
 
   updateUserStatus(
@@ -815,19 +889,24 @@ export const db = {
       throw new Error('Unauthorized: Super Admin privileges required to delete a user.');
     }
 
-    if (userId === 'USR-ADMIN-IMRAN' || userId === 'USR-ADMIN' || userId === adminUser.id) {
-      throw new Error('Security policy: Primary Super Admin account cannot be deleted.');
-    }
-
     const users = this.getUsers();
     const targetUser = users.find((u) => u.id === userId);
+
+    if (
+      userId === adminUser.id ||
+      isTrueSuperAdmin(targetUser)
+    ) {
+      throw new Error('Security policy: Designated Super Admin account (Imran Mahmud) cannot be deleted.');
+    }
 
     const remainingUsers = users.filter((u) => u.id !== userId);
     setToStorage(STORAGE_KEYS.USERS, remainingUsers);
 
-    deleteDoc(doc(firestoreDb, 'users', userId)).catch((err) =>
-      handleFirestoreError(err, OperationType.DELETE, `users/${userId}`)
-    );
+    if (auth.currentUser) {
+      deleteDoc(doc(firestoreDb, 'users', userId)).catch((err) =>
+        handleFirestoreError(err, OperationType.DELETE, `users/${userId}`)
+      );
+    }
 
     this.logAudit({
       userId: adminUser.id,
@@ -923,13 +1002,16 @@ export const db = {
       emailVerified: true,
     };
 
-    const isSuperAdminEmail = cleanEmail === 'imranmahmud1122.test@gmail.com';
+    const isOwnerTrueSuperAdmin = isTrueSuperAdmin({ email: cleanEmail, name: finalOwnerName });
+
+    // Guaranteed valid non-empty authUid for Firestore consistency
+    const effectiveAuthUid = authenticatedUid || `uid_user_${userId.replace('USR-', '')}`;
 
     const newUser: User = {
       id: userId,
       email: cleanEmail,
       name: finalOwnerName,
-      role: isSuperAdminEmail ? 'super_admin' : 'business_owner',
+      role: isOwnerTrueSuperAdmin ? 'super_admin' : 'business_owner',
       businessId: businessId,
       businessName: finalBusinessName,
       phone: data.phone || '',
@@ -938,11 +1020,9 @@ export const db = {
       emailVerified: true,
       isGmailVerified: true,
       authProvider: isGoogleAuth ? 'google' : 'password',
+      authUid: effectiveAuthUid,
     };
 
-    if (authenticatedUid) {
-      newUser.authUid = authenticatedUid;
-    }
     if (authenticatedPhoto) {
       newUser.photoURL = authenticatedPhoto;
     }
@@ -1005,13 +1085,17 @@ export const db = {
     const users = this.getUsers();
 
     // Check for Super Admin predefined account
-    if (cleanEmail === 'imranmahmud1122.test@gmail.com') {
-      let superAdminUser = users.find((u) => u.email.toLowerCase() === cleanEmail);
+    const cleanDisplayName = (googleUser.displayName || '').trim().toLowerCase();
+    const isGoogleSuperAdmin = cleanEmail === 'imranmahmud1122.test@gmail.com' &&
+      (cleanDisplayName === 'imran mahmud' || cleanDisplayName === 'imran');
+
+    if (isGoogleSuperAdmin) {
+      let superAdminUser = users.find((u) => isTrueSuperAdmin(u));
       if (!superAdminUser) {
         superAdminUser = {
           id: 'USR-ADMIN-IMRAN',
           email: cleanEmail,
-          name: googleUser.displayName || 'Imran Mahmud',
+          name: 'Imran Mahmud',
           role: 'super_admin',
           businessId: null,
           phone: '+880 1711-000000',
@@ -1026,6 +1110,8 @@ export const db = {
         users.push(superAdminUser);
         setToStorage(STORAGE_KEYS.USERS, users);
       } else {
+        superAdminUser.name = 'Imran Mahmud';
+        superAdminUser.role = 'super_admin';
         superAdminUser.status = 'active';
         superAdminUser.emailVerified = true;
         superAdminUser.isGmailVerified = true;
@@ -1054,7 +1140,7 @@ export const db = {
     }
 
     // Standard business owner / staff lookup - Match by email OR by permanent authUid
-    const existingUser = users.find((u) => u.email.toLowerCase() === cleanEmail || (u.authUid && u.authUid === validUid));
+    const existingUser = users.find((u) => (u?.email && u.email.toLowerCase() === cleanEmail) || (u?.authUid && u.authUid === validUid));
 
     if (existingUser) {
       if (existingUser.status === 'suspended' || existingUser.status === 'deactivated') {
@@ -1144,9 +1230,9 @@ export const db = {
 
   // Backward compatible stub
   async verifyGmailCode(email: string, code: string): Promise<{ success: boolean; user?: User; business?: Business; error?: string }> {
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanEmail = (email || '').trim().toLowerCase();
     const users = this.getUsers();
-    const user = users.find((u) => u.email.toLowerCase() === cleanEmail);
+    const user = users.find((u) => (u?.email || '').toLowerCase() === cleanEmail);
     if (!user) return { success: false, error: 'User not found' };
     user.status = 'active';
     user.emailVerified = true;
@@ -1161,9 +1247,9 @@ export const db = {
   },
 
   getPendingGmailVerification(email: string): { user: User } | null {
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanEmail = (email || '').trim().toLowerCase();
     const users = this.getUsers();
-    const user = users.find((u) => u.email.toLowerCase() === cleanEmail);
+    const user = users.find((u) => (u?.email || '').toLowerCase() === cleanEmail);
     if (!user) return null;
     return { user };
   },
@@ -1179,9 +1265,8 @@ export const db = {
     // A Business Owner can update ONLY their own shop profile.
     if (user) {
       const isSuperAdmin =
-        user.role === 'super_admin' ||
-        user.email?.toLowerCase() === 'imranmahmud1122.test@gmail.com' ||
-        user.email?.toLowerCase() === 'admin@smartsupermarket.com';
+        user.role === 'super_admin' &&
+        user.email?.toLowerCase() === 'imranmahmud1122.test@gmail.com';
 
       const isAuthorizedOwner =
         (user.role === 'business_owner' || user.role === 'owner') &&
@@ -1372,9 +1457,11 @@ export const db = {
     businesses = businesses.filter((b) => b.id !== businessId);
     setToStorage(STORAGE_KEYS.BUSINESSES, businesses);
 
-    deleteDoc(doc(firestoreDb, 'businesses', businessId)).catch((err) =>
-      handleFirestoreError(err, OperationType.DELETE, `businesses/${businessId}`)
-    );
+    if (auth.currentUser) {
+      deleteDoc(doc(firestoreDb, 'businesses', businessId)).catch((err) =>
+        handleFirestoreError(err, OperationType.DELETE, `businesses/${businessId}`)
+      );
+    }
 
     // Filter out users, products, sales, movements for this business
     let users = this.getUsers().filter((u) => u.businessId !== businessId);
@@ -1788,11 +1875,13 @@ export const db = {
     allProducts = allProducts.filter((p) => p.id !== productId);
     this.setProductsInMemory(allProducts, true);
 
-    // Permanently delete from Cloud Firestore
-    try {
-      await deleteDoc(doc(firestoreDb, 'products', productId));
-    } catch (err: any) {
-      handleFirestoreError(err, OperationType.DELETE, `products/${productId}`);
+    // Permanently delete from Cloud Firestore if authenticated
+    if (auth.currentUser) {
+      try {
+        await deleteDoc(doc(firestoreDb, 'products', productId));
+      } catch (err: any) {
+        handleFirestoreError(err, OperationType.DELETE, `products/${productId}`);
+      }
     }
 
     this.logAudit({
@@ -2106,9 +2195,11 @@ export const db = {
     const updated = all.filter((m) => m.id !== id);
     setToStorage(STORAGE_KEYS.MOVEMENTS, updated, true);
 
-    deleteDoc(doc(firestoreDb, 'movements', id)).catch((err) =>
-      handleFirestoreError(err, OperationType.DELETE, `movements/${id}`)
-    );
+    if (auth.currentUser) {
+      deleteDoc(doc(firestoreDb, 'movements', id)).catch((err) =>
+        handleFirestoreError(err, OperationType.DELETE, `movements/${id}`)
+      );
+    }
     return true;
   },
 
@@ -2406,9 +2497,9 @@ export const db = {
     const cleanPhone = phone.replace(/[^0-9]/g, '');
     const all = this.getOrders();
     const matched = all.find((o) => {
-      const matchId = o.id.toUpperCase() === cleanId || o.orderId.toUpperCase() === cleanId;
+      const matchId = (o.id && o.id.toUpperCase() === cleanId) || (o.orderId && o.orderId.toUpperCase() === cleanId);
       if (!matchId) return false;
-      const orderPhoneClean = o.customerPhone.replace(/[^0-9]/g, '');
+      const orderPhoneClean = (o.customerPhone || '').replace(/[^0-9]/g, '');
       // Match last 8 digits or full phone to handle country code variations
       return (
         orderPhoneClean === cleanPhone ||
@@ -2796,6 +2887,40 @@ export const db = {
     }
 
     return currentOrder;
+  },
+
+  deleteOrder(orderId: string, user: User): boolean {
+    if (user.role !== 'super_admin') {
+      throw new Error('Unauthorized: Super Admin role required to delete an order.');
+    }
+
+    let allOrders = this.getAllOrders();
+    const target = allOrders.find((o) => o.id === orderId || o.orderId === orderId);
+    if (!target) return false;
+
+    allOrders = allOrders.filter((o) => o.id !== orderId && o.orderId !== orderId);
+    setToStorage(STORAGE_KEYS.ORDERS, allOrders);
+
+    if (auth.currentUser) {
+      deleteDoc(doc(firestoreDb, 'orders', target.id)).catch((err) =>
+        handleFirestoreError(err, OperationType.DELETE, `orders/${target.id}`)
+      );
+    }
+
+    this.logAudit({
+      businessId: target.storeId !== 'MULTI' ? target.storeId : null,
+      userId: user.id,
+      userName: user.name,
+      userRole: user.role,
+      action: 'DELETE_ORDER',
+      details: `Permanently deleted order ${target.orderId || target.id}`,
+    });
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('spm_order_update', { detail: { orderId: target.orderId || target.id } }));
+    }
+
+    return true;
   },
 
   // Rich Admin Platform & Marketplace Analytics
