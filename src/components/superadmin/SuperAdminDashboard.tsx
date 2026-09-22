@@ -474,21 +474,43 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
   // Filtered Business Owners
   const businessOwners = users.filter((u) => u.role === 'business_owner' || u.role === 'owner');
-  const filteredBusinessOwners = businesses.filter((b) => {
-    const q = (userSearchQuery || '').toLowerCase().trim();
-    const owner = users.find((u) => u.id === b.ownerId || u.businessId === b.id);
-    const matchesSearch =
-      !q ||
-      (b.name || '').toLowerCase().includes(q) ||
-      (b.id || '').toLowerCase().includes(q) ||
-      (b.ownerName || '').toLowerCase().includes(q) ||
-      (b.email || '').toLowerCase().includes(q) ||
-      (b.ownerId && (b.ownerId || '').toLowerCase().includes(q)) ||
-      (owner?.id && (owner.id || '').toLowerCase().includes(q));
+  const filteredBusinessOwners = businessOwners
+    .map((u) => {
+      const biz = businesses.find((b) => b.ownerId === u.id || (u.businessId && b.id === u.businessId));
+      const fallbackBiz: Business = {
+        id: u.businessId || 'UNASSIGNED',
+        name: u.businessName || 'Store Workspace Pending',
+        ownerName: u.name,
+        ownerId: u.id,
+        email: u.email,
+        phone: u.phone || '',
+        address: '',
+        businessType: 'Other',
+        currencySymbol: '৳',
+        taxRate: 0,
+        status: (u.status as any) || 'active',
+        createdAt: u.createdAt || new Date().toISOString(),
+      };
+      return {
+        user: u,
+        biz: biz || fallbackBiz,
+        hasStore: !!biz,
+      };
+    })
+    .filter(({ user: u, biz: b }) => {
+      const q = (userSearchQuery || '').toLowerCase().trim();
+      const matchesSearch =
+        !q ||
+        (b.name || '').toLowerCase().includes(q) ||
+        (b.id || '').toLowerCase().includes(q) ||
+        (u.name || '').toLowerCase().includes(q) ||
+        (u.email || '').toLowerCase().includes(q) ||
+        (u.id || '').toLowerCase().includes(q) ||
+        (u.phone && (u.phone || '').toLowerCase().includes(q));
 
-    const matchesStatus = userStatusFilter === 'ALL' || b.status === userStatusFilter;
-    return matchesSearch && matchesStatus;
-  });
+      const matchesStatus = userStatusFilter === 'ALL' || u.status === userStatusFilter || b.status === userStatusFilter;
+      return matchesSearch && matchesStatus;
+    });
 
   const filteredBusinesses = businesses.filter((b) => {
     if (!searchQuery.trim()) return true;
@@ -766,7 +788,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
               <div className="p-5 bg-white rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
                 <div>
                   <span className="text-xs font-semibold text-slate-500 block">Business Owners</span>
-                  <span className="text-3xl font-black text-blue-700 mt-1 block">{businesses.length}</span>
+                  <span className="text-3xl font-black text-blue-700 mt-1 block">{businessOwners.length}</span>
                   <span className="text-[11px] text-blue-600 font-medium">Store & Merchant Accounts</span>
                 </div>
                 <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
@@ -833,7 +855,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                     }`}
                   >
                     <Building2 className="w-3.5 h-3.5 text-blue-600" />
-                    Business Owners Directory ({businesses.length})
+                    Business Owners Directory ({businessOwners.length})
                   </button>
                 </div>
               </div>
@@ -1112,25 +1134,24 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                           </td>
                         </tr>
                       ) : (
-                        filteredBusinessOwners.map((biz, idx) => {
-                          const ownerUser = users.find((u) => u.id === biz.ownerId || u.businessId === biz.id);
-                          const ownerIdDisplay = biz.ownerId || ownerUser?.id || `BO-${(biz.id || '').replace('SHOP-', '')}`;
-                          const bProducts = db.getProducts(biz.id);
-                          const bSales = db.getSales(biz.id);
+                        filteredBusinessOwners.map(({ user: ownerUser, biz, hasStore }, idx) => {
+                          const ownerIdDisplay = ownerUser?.id || biz.ownerId || `BO-${(biz.id || '').replace('SHOP-', '')}`;
+                          const bProducts = hasStore && biz.id !== 'UNASSIGNED' ? db.getProducts(biz.id) : [];
+                          const bSales = hasStore && biz.id !== 'UNASSIGNED' ? db.getSales(biz.id) : [];
                           const bRev = bSales.reduce((acc, s) => acc + s.totalAmount, 0);
 
                           return (
-                            <tr key={biz.id ? `bo-${biz.id}-${idx}` : `bo-idx-${idx}`} className="hover:bg-slate-50/80 transition-colors">
+                            <tr key={biz.id && biz.id !== 'UNASSIGNED' ? `bo-${biz.id}-${idx}` : `bo-usr-${ownerUser.id}-${idx}`} className="hover:bg-slate-50/80 transition-colors">
                               {/* Unique Business Owner ID */}
                               <td className="py-3.5 px-4 font-mono">
                                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200/80 text-blue-900 font-bold text-[11px]">
                                   <span>{ownerIdDisplay}</span>
                                   <button
-                                    onClick={() => copyToClipboard(ownerIdDisplay, `bo-${biz.id}`)}
+                                    onClick={() => copyToClipboard(ownerIdDisplay, `bo-${biz.id}-${ownerUser.id}`)}
                                     title="Copy Business Owner ID"
                                     className="p-0.5 hover:text-blue-600 cursor-pointer"
                                   >
-                                    {copiedId === `bo-${biz.id}` ? (
+                                    {copiedId === `bo-${biz.id}-${ownerUser.id}` ? (
                                       <Check className="w-3 h-3 text-emerald-600" />
                                     ) : (
                                       <Copy className="w-3 h-3 text-slate-400" />
@@ -1143,9 +1164,15 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                               <td className="py-3.5 px-4">
                                 <div className="font-bold text-slate-900 text-sm">{biz.name}</div>
                                 <div className="flex items-center gap-2 mt-0.5">
-                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 font-mono text-[10px] text-purple-700 font-bold">
-                                    Store ID: {biz.id}
-                                  </span>
+                                  {hasStore && biz.id !== 'UNASSIGNED' ? (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 font-mono text-[10px] text-purple-700 font-bold">
+                                      Store ID: {biz.id}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 font-sans text-[10px] text-amber-700 font-bold border border-amber-200/60">
+                                      No Store Assigned
+                                    </span>
+                                  )}
                                   <span className="text-[10px] text-slate-400">{biz.businessType || 'Retail Store'}</span>
                                 </div>
                                 {biz.address && <div className="text-[10px] text-slate-400 mt-0.5">{biz.address}</div>}
@@ -1153,62 +1180,104 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
                               {/* Owner Name & Contact */}
                               <td className="py-3.5 px-4">
-                                <div className="font-semibold text-slate-900 text-xs">{biz.ownerName || ownerUser?.name || 'Store Owner'}</div>
-                                <div className="text-[11px] text-slate-500">{biz.email}</div>
-                                {biz.phone && <div className="text-[10px] text-slate-400">{biz.phone}</div>}
+                                <div className="font-semibold text-slate-900 text-xs">{ownerUser?.name || biz.ownerName || 'Store Owner'}</div>
+                                <div className="text-[11px] text-slate-500">{ownerUser?.email || biz.email}</div>
+                                {(ownerUser?.phone || biz.phone) && <div className="text-[10px] text-slate-400">{ownerUser?.phone || biz.phone}</div>}
                               </td>
 
                               {/* Catalog & Sales */}
                               <td className="py-3.5 px-4 text-center">
-                                <span className="font-bold text-slate-800 text-xs block">{bProducts.length} products</span>
-                                <span className="text-[10px] text-emerald-700 font-semibold">
-                                  {formatCurrency(bRev, biz.currencySymbol)} ({bSales.length} orders)
-                                </span>
+                                {hasStore && biz.id !== 'UNASSIGNED' ? (
+                                  <>
+                                    <span className="font-bold text-slate-800 text-xs block">{bProducts.length} products</span>
+                                    <span className="text-[10px] text-emerald-700 font-semibold">
+                                      {formatCurrency(bRev, biz.currencySymbol)} ({bSales.length} orders)
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span className="text-slate-400 text-[11px] italic">No active store catalog</span>
+                                )}
                               </td>
 
                               {/* Status */}
-                              <td className="py-3.5 px-4 text-center">{statusBadge(biz.status || 'active')}</td>
+                              <td className="py-3.5 px-4 text-center">{statusBadge(biz.status || ownerUser?.status || 'active')}</td>
 
                               {/* Created Date */}
                               <td className="py-3.5 px-4 text-[11px] text-slate-500 whitespace-nowrap">
-                                {formatDate(biz.createdAt)}
+                                {formatDate(ownerUser?.createdAt || biz.createdAt)}
                               </td>
 
                               {/* Actions - Sticky Right Column */}
                               <td className="py-3.5 px-4 text-right pr-6 sticky right-0 bg-white/95 backdrop-blur-xs z-10 shadow-[-6px_0_12px_-4px_rgba(0,0,0,0.08)]">
                                 <div className="flex items-center justify-end gap-1.5">
                                   {/* Switch to workspace */}
-                                  <button
-                                    onClick={() => onSwitchToBusiness(biz)}
-                                    className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
-                                    title="Enter Business Store Dashboard"
-                                  >
-                                    <Eye className="w-3.5 h-3.5 text-emerald-400" />
-                                    <span>Workspace</span>
-                                  </button>
+                                  {hasStore && biz.id !== 'UNASSIGNED' ? (
+                                    <button
+                                      onClick={() => onSwitchToBusiness(biz)}
+                                      className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                                      title="Enter Business Store Dashboard"
+                                    >
+                                      <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                                      <span>Workspace</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleToggleUserStatus(ownerUser)}
+                                      className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                                      title="Manage User Account"
+                                    >
+                                      <UserCheck className="w-3.5 h-3.5 text-slate-500" />
+                                      <span>Manage</span>
+                                    </button>
+                                  )}
 
                                   {/* Deactivate / Reactivate Owner */}
-                                  <button
-                                    onClick={() => setBusinessOwnerToDeactivate(biz)}
-                                    className={`px-2.5 py-1.5 rounded-xl font-bold text-xs border transition-colors cursor-pointer shadow-2xs ${
-                                      biz.status === 'active'
-                                        ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                                        : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                                    }`}
-                                    title={biz.status === 'active' ? 'Deactivate Business Owner' : 'Reactivate Business Owner'}
-                                  >
-                                    {biz.status === 'active' ? 'Deactivate' : 'Activate'}
-                                  </button>
+                                  {hasStore && biz.id !== 'UNASSIGNED' ? (
+                                    <button
+                                      onClick={() => setBusinessOwnerToDeactivate(biz)}
+                                      className={`px-2.5 py-1.5 rounded-xl font-bold text-xs border transition-colors cursor-pointer shadow-2xs ${
+                                        biz.status === 'active'
+                                          ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                          : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                      }`}
+                                      title={biz.status === 'active' ? 'Deactivate Business Owner' : 'Reactivate Business Owner'}
+                                    >
+                                      {biz.status === 'active' ? 'Deactivate' : 'Activate'}
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleToggleUserStatus(ownerUser)}
+                                      className={`px-2.5 py-1.5 rounded-xl font-bold text-xs border transition-colors cursor-pointer shadow-2xs ${
+                                        ownerUser.status === 'active'
+                                          ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                          : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                      }`}
+                                      title={ownerUser.status === 'active' ? 'Deactivate User' : 'Activate User'}
+                                    >
+                                      {ownerUser.status === 'active' ? 'Deactivate' : 'Activate'}
+                                    </button>
+                                  )}
 
                                   {/* Permanent Delete Business Owner */}
-                                  <button
-                                    onClick={() => setBusinessOwnerToDelete(biz)}
-                                    className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer shadow-2xs hover:border-rose-300"
-                                    title="Permanently Delete Business Owner & Store"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                                    <span>Permanent Delete</span>
-                                  </button>
+                                  {hasStore && biz.id !== 'UNASSIGNED' ? (
+                                    <button
+                                      onClick={() => setBusinessOwnerToDelete(biz)}
+                                      className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer shadow-2xs hover:border-rose-300"
+                                      title="Permanently Delete Business Owner & Store"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                      <span>Permanent Delete</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => setUserToDelete(ownerUser)}
+                                      className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer shadow-2xs hover:border-rose-300"
+                                      title="Permanently Delete User"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                      <span>Permanent Delete</span>
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>

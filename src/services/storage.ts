@@ -70,7 +70,43 @@ const STORAGE_KEYS = {
   SUPPORT_SETTINGS: 'ssm_support_settings_v2',
   SUPPORT_TICKETS: 'ssm_support_tickets_v2',
   ORDERS: 'ssm_orders_v2',
+  TOMBSTONES: 'ssm_tombstones_v2',
 };
+
+interface TombstoneRegistry {
+  users: string[];
+  businesses: string[];
+  products: string[];
+  orders: string[];
+}
+
+function getTombstones(): TombstoneRegistry {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.TOMBSTONES);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        users: Array.isArray(parsed.users) ? parsed.users : [],
+        businesses: Array.isArray(parsed.businesses) ? parsed.businesses : [],
+        products: Array.isArray(parsed.products) ? parsed.products : [],
+        orders: Array.isArray(parsed.orders) ? parsed.orders : [],
+      };
+    }
+  } catch {}
+  return { users: [], businesses: [], products: [], orders: [] };
+}
+
+function recordTombstone(type: keyof TombstoneRegistry, id: string): void {
+  if (!id) return;
+  const current = getTombstones();
+  const cleanId = id.trim();
+  if (!current[type].includes(cleanId)) {
+    current[type].push(cleanId);
+    try {
+      localStorage.setItem(STORAGE_KEYS.TOMBSTONES, JSON.stringify(current));
+    } catch {}
+  }
+}
 
 const DEFAULT_SUPPORT_SETTINGS: SupportSettings = {
   whatsappNumber: '+8801859340742',
@@ -256,21 +292,27 @@ export async function syncWithFirestore(): Promise<void> {
 
     // 1. Initial Products & Tenant Hydration from Firestore
     try {
+      const tombstones = getTombstones();
+      const deletedProdSet = new Set(tombstones.products);
       const prodSnap = await getDocs(collection(firestoreDb, 'products'));
       if (!prodSnap.empty) {
         const cloudProducts: Product[] = [];
         prodSnap.forEach((docSnap) => {
           const data = docSnap.data() as Product;
           const p = { ...data, id: data?.id || docSnap.id };
+          if (deletedProdSet.has(p.id) || deletedProdSet.has(docSnap.id)) {
+            deleteDoc(doc(firestoreDb, 'products', docSnap.id)).catch(() => {});
+            return;
+          }
           if (!isDemoProduct(p)) {
             cloudProducts.push(p);
           }
         });
-        const existingProds = getFromStorage<Product[]>(STORAGE_KEYS.PRODUCTS, []);
+        const existingProds = getFromStorage<Product[]>(STORAGE_KEYS.PRODUCTS, []).filter((p) => p && !deletedProdSet.has(p.id));
         const prodMap = new Map<string, Product>();
         existingProds.forEach((p) => prodMap.set(p.id, p));
         cloudProducts.forEach((p) => prodMap.set(p.id, p));
-        const mergedProds = Array.from(prodMap.values());
+        const mergedProds = Array.from(prodMap.values()).filter((p) => p && !deletedProdSet.has(p.id));
         cachedProductsInMemory = mergedProds;
         setToStorage(STORAGE_KEYS.PRODUCTS, mergedProds, false);
         console.log(`[Firestore] Hydrated and merged ${cloudProducts.length} live products from Cloud Firestore.`);
@@ -281,21 +323,28 @@ export async function syncWithFirestore(): Promise<void> {
 
     // 2. Hydrate Businesses from Firestore
     try {
+      const tombstones = getTombstones();
+      const deletedBizSet = new Set(tombstones.businesses);
       const bizSnap = await getDocs(collection(firestoreDb, 'businesses'));
       if (!bizSnap.empty) {
         const cloudBiz: Business[] = [];
         bizSnap.forEach((docSnap) => {
           const data = docSnap.data() as Business;
           const b = { ...data, id: data?.id || docSnap.id };
+          if (deletedBizSet.has(b.id) || deletedBizSet.has(docSnap.id)) {
+            deleteDoc(doc(firestoreDb, 'businesses', docSnap.id)).catch(() => {});
+            return;
+          }
           if (!isDemoBusiness(b)) {
             cloudBiz.push(b);
           }
         });
-        const existingBiz = getFromStorage<Business[]>(STORAGE_KEYS.BUSINESSES, []);
+        const existingBiz = getFromStorage<Business[]>(STORAGE_KEYS.BUSINESSES, []).filter((b) => b && !deletedBizSet.has(b.id));
         const bizMap = new Map<string, Business>();
         existingBiz.forEach((b) => bizMap.set(b.id, b));
         cloudBiz.forEach((b) => bizMap.set(b.id, b));
-        setToStorage(STORAGE_KEYS.BUSINESSES, Array.from(bizMap.values()), false);
+        const mergedBiz = Array.from(bizMap.values()).filter((b) => b && !deletedBizSet.has(b.id));
+        setToStorage(STORAGE_KEYS.BUSINESSES, mergedBiz, false);
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, 'businesses');
@@ -303,21 +352,28 @@ export async function syncWithFirestore(): Promise<void> {
 
     // 3. Hydrate Orders from Firestore
     try {
+      const tombstones = getTombstones();
+      const deletedOrderSet = new Set(tombstones.orders);
       const ordSnap = await getDocs(collection(firestoreDb, 'orders'));
       if (!ordSnap.empty) {
         const cloudOrders: Order[] = [];
         ordSnap.forEach((docSnap) => {
           const data = docSnap.data() as Order;
           const o = { ...data, id: data?.id || docSnap.id };
+          if (deletedOrderSet.has(o.id) || deletedOrderSet.has(docSnap.id) || deletedOrderSet.has(o.orderId)) {
+            deleteDoc(doc(firestoreDb, 'orders', docSnap.id)).catch(() => {});
+            return;
+          }
           if (o.businessId !== 'SHOP-001' && o.customerEmail !== 'tanvir@gmail.com' && o.customerEmail !== 'sumaiya@yahoo.com') {
             cloudOrders.push(o);
           }
         });
-        const existingOrders = getFromStorage<Order[]>(STORAGE_KEYS.ORDERS, []);
+        const existingOrders = getFromStorage<Order[]>(STORAGE_KEYS.ORDERS, []).filter((o) => o && !deletedOrderSet.has(o.id) && !deletedOrderSet.has(o.orderId));
         const ordMap = new Map<string, Order>();
         existingOrders.forEach((o) => ordMap.set(o.id || o.orderId, o));
         cloudOrders.forEach((o) => ordMap.set(o.id || o.orderId, o));
-        setToStorage(STORAGE_KEYS.ORDERS, Array.from(ordMap.values()), false);
+        const mergedOrders = Array.from(ordMap.values()).filter((o) => o && !deletedOrderSet.has(o.id) && !deletedOrderSet.has(o.orderId));
+        setToStorage(STORAGE_KEYS.ORDERS, mergedOrders, false);
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, 'orders');
@@ -325,12 +381,18 @@ export async function syncWithFirestore(): Promise<void> {
 
     // 4. Hydrate Users from Firestore
     try {
+      const tombstones = getTombstones();
+      const deletedUserSet = new Set(tombstones.users);
       const usrSnap = await getDocs(collection(firestoreDb, 'users'));
       if (!usrSnap.empty) {
         const cloudUsers: User[] = [];
         usrSnap.forEach((docSnap) => {
           const data = docSnap.data() as User;
           const u = { ...data, id: data?.id || docSnap.id };
+          if (deletedUserSet.has(u.id) || deletedUserSet.has(docSnap.id) || (u.email && deletedUserSet.has(u.email.toLowerCase()))) {
+            deleteDoc(doc(firestoreDb, 'users', docSnap.id)).catch(() => {});
+            return;
+          }
           if (u && !isDemoUser(u)) {
             if (!u.name || typeof u.name !== 'string') {
               u.name = u.email ? u.email.split('@')[0] : 'User';
@@ -338,11 +400,12 @@ export async function syncWithFirestore(): Promise<void> {
             cloudUsers.push(u);
           }
         });
-        const existingUsers = getFromStorage<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+        const existingUsers = getFromStorage<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS).filter((u) => u && !deletedUserSet.has(u.id) && (!u.email || !deletedUserSet.has(u.email.toLowerCase())));
         const usrMap = new Map<string, User>();
         existingUsers.forEach((u) => usrMap.set(u.id, u));
         cloudUsers.forEach((u) => usrMap.set(u.id, u));
-        setToStorage(STORAGE_KEYS.USERS, Array.from(usrMap.values()), false);
+        const mergedUsers = Array.from(usrMap.values()).filter((u) => u && !deletedUserSet.has(u.id) && (!u.email || !deletedUserSet.has(u.email.toLowerCase())));
+        setToStorage(STORAGE_KEYS.USERS, mergedUsers, false);
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, 'users');
@@ -571,21 +634,19 @@ export function initializeStorage(): void {
   if (!localStorage.getItem(STORAGE_KEYS.USERS)) {
     setToStorage(STORAGE_KEYS.USERS, INITIAL_USERS);
   } else {
-    // Ensure all demo users exist
+    // Ensure the single designated Super Admin account Imran Mahmud exists without resurrecting deleted users
     try {
-      const existingUsers: User[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]');
-      let updated = false;
-      INITIAL_USERS.forEach((initUser) => {
-        if (!existingUsers.some((u) => (u?.email || '').toLowerCase() === (initUser.email || '').toLowerCase())) {
-          existingUsers.push(initUser);
-          updated = true;
-        }
-      });
-      if (updated) {
-        setToStorage(STORAGE_KEYS.USERS, existingUsers);
+      const tombstones = getTombstones();
+      const deletedUserSet = new Set(tombstones.users);
+      let existingUsers: User[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]');
+      existingUsers = existingUsers.filter((u) => u && !deletedUserSet.has(u.id) && (!u.email || !deletedUserSet.has(u.email.toLowerCase())));
+      const hasSuperAdmin = existingUsers.some((u) => isTrueSuperAdmin(u));
+      if (!hasSuperAdmin) {
+        existingUsers.unshift(INITIAL_USERS[0]);
       }
+      setToStorage(STORAGE_KEYS.USERS, existingUsers);
     } catch (e) {
-      console.warn('User migration error:', e);
+      console.warn('User initialization check:', e);
     }
   }
 
@@ -711,6 +772,8 @@ export const db = {
   },
 
   getUsers(): User[] {
+    const tombstones = getTombstones();
+    const deletedUserSet = new Set(tombstones.users);
     const list = getFromStorage<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
     let updated = false;
 
@@ -718,7 +781,11 @@ export const db = {
     let hasSuperAdminImran = false;
 
     for (const u of (list || [])) {
-      if (!u || (u?.email || '').toLowerCase() === 'cashier@metro.com' || u?.id === 'USR-METRO-CASHIER') {
+      if (!u || deletedUserSet.has(u.id) || (u?.email && deletedUserSet.has(u.email.toLowerCase()))) {
+        updated = true;
+        continue;
+      }
+      if ((u?.email || '').toLowerCase() === 'cashier@metro.com' || u?.id === 'USR-METRO-CASHIER') {
         updated = true;
         continue;
       }
@@ -774,6 +841,7 @@ export const db = {
     if (updated || resultUsers.length !== (list || []).length) {
       setToStorage(STORAGE_KEYS.USERS, resultUsers);
     }
+
     return resultUsers;
   },
 
@@ -899,14 +967,18 @@ export const db = {
       throw new Error('Security policy: Designated Super Admin account (Imran Mahmud) cannot be deleted.');
     }
 
+    recordTombstone('users', userId);
+    if (targetUser?.email) {
+      recordTombstone('users', targetUser.email.toLowerCase());
+    }
+
     const remainingUsers = users.filter((u) => u.id !== userId);
     setToStorage(STORAGE_KEYS.USERS, remainingUsers);
 
-    if (auth.currentUser) {
-      deleteDoc(doc(firestoreDb, 'users', userId)).catch((err) =>
-        handleFirestoreError(err, OperationType.DELETE, `users/${userId}`)
-      );
-    }
+    // Unconditionally permanently delete document from Cloud Firestore
+    try {
+      deleteDoc(doc(firestoreDb, 'users', userId)).catch(() => {});
+    } catch {}
 
     this.logAudit({
       userId: adminUser.id,
@@ -919,15 +991,19 @@ export const db = {
 
   // Business / Tenant Management
   getBusinesses(): Business[] {
+    const tombstones = getTombstones();
+    const deletedBizSet = new Set(tombstones.businesses);
     const list = getFromStorage<Business[]>(STORAGE_KEYS.BUSINESSES, INITIAL_BUSINESSES);
     let updated = false;
-    const sanitized = list.map((b) => {
-      if (!b.currencySymbol || b.currencySymbol === '$') {
-        updated = true;
-        return { ...b, currencySymbol: '৳' };
-      }
-      return b;
-    });
+    const sanitized = list
+      .filter((b) => b && !deletedBizSet.has(b.id))
+      .map((b) => {
+        if (!b.currencySymbol || b.currencySymbol === '$') {
+          updated = true;
+          return { ...b, currencySymbol: '৳' };
+        }
+        return b;
+      });
     if (updated) {
       setToStorage(STORAGE_KEYS.BUSINESSES, sanitized);
     }
@@ -1452,23 +1528,46 @@ export const db = {
       throw new Error('Unauthorized: Super Admin role required to delete a business.');
     }
 
+    recordTombstone('businesses', businessId);
+
     let businesses = this.getBusinesses();
     const target = businesses.find((b) => b.id === businessId);
     businesses = businesses.filter((b) => b.id !== businessId);
     setToStorage(STORAGE_KEYS.BUSINESSES, businesses);
 
-    if (auth.currentUser) {
-      deleteDoc(doc(firestoreDb, 'businesses', businessId)).catch((err) =>
-        handleFirestoreError(err, OperationType.DELETE, `businesses/${businessId}`)
-      );
-    }
+    // Unconditionally delete from Firestore
+    try {
+      deleteDoc(doc(firestoreDb, 'businesses', businessId)).catch(() => {});
+    } catch {}
 
-    // Filter out users, products, sales, movements for this business
-    let users = this.getUsers().filter((u) => u.businessId !== businessId);
+    // Filter and tombstone users belonging to this business (except root super admin)
+    const usersToDelete = this.getUsers().filter((u) => u.businessId === businessId && !isTrueSuperAdmin(u));
+    usersToDelete.forEach((u) => {
+      recordTombstone('users', u.id);
+      if (u.email) recordTombstone('users', u.email.toLowerCase());
+      deleteDoc(doc(firestoreDb, 'users', u.id)).catch(() => {});
+    });
+    let users = this.getUsers().filter((u) => u.businessId !== businessId || isTrueSuperAdmin(u));
     setToStorage(STORAGE_KEYS.USERS, users);
 
+    // Filter and tombstone products belonging to this business
+    const prodsToDelete = this.getAllProductsRaw().filter((p) => p.businessId === businessId);
+    prodsToDelete.forEach((p) => {
+      recordTombstone('products', p.id);
+      deleteDoc(doc(firestoreDb, 'products', p.id)).catch(() => {});
+    });
     let products = this.getAllProductsRaw().filter((p) => p.businessId !== businessId);
-    setToStorage(STORAGE_KEYS.PRODUCTS, products);
+    this.setProductsInMemory(products, true);
+
+    // Filter and tombstone orders belonging to this store
+    const ordersToDelete = this.getOrders().filter((o) => o.storeId === businessId || o.businessId === businessId);
+    ordersToDelete.forEach((o) => {
+      recordTombstone('orders', o.id);
+      if (o.orderId) recordTombstone('orders', o.orderId);
+      deleteDoc(doc(firestoreDb, 'orders', o.id)).catch(() => {});
+    });
+    let orders = this.getOrders().filter((o) => o.storeId !== businessId && o.businessId !== businessId);
+    setToStorage(STORAGE_KEYS.ORDERS, orders);
 
     this.logAudit({
       businessId,
@@ -1483,15 +1582,20 @@ export const db = {
 
   // Products (Tenant-isolated)
   getAllProductsRaw(): Product[] {
+    const tombstones = getTombstones();
+    const deletedProdSet = new Set(tombstones.products);
     if (!cachedProductsInMemory) {
       cachedProductsInMemory = getFromStorage<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
     }
-    return cachedProductsInMemory;
+    return (cachedProductsInMemory || []).filter((p) => p && !deletedProdSet.has(p.id));
   },
 
   setProductsInMemory(products: Product[], notify = true): void {
-    cachedProductsInMemory = [...products];
-    setToStorage(STORAGE_KEYS.PRODUCTS, products, notify);
+    const tombstones = getTombstones();
+    const deletedProdSet = new Set(tombstones.products);
+    const cleaned = (products || []).filter((p) => p && !deletedProdSet.has(p.id));
+    cachedProductsInMemory = [...cleaned];
+    setToStorage(STORAGE_KEYS.PRODUCTS, cleaned, notify);
   },
 
   getProducts(businessId: string): Product[] {
@@ -1525,6 +1629,8 @@ export const db = {
   async fetchProductsFromFirestore(businessId: string): Promise<Product[]> {
     if (!businessId) return [];
     try {
+      const tombstones = getTombstones();
+      const deletedProdSet = new Set(tombstones.products);
       const q = query(
         collection(firestoreDb, 'products'),
         where('businessId', '==', businessId)
@@ -1532,7 +1638,13 @@ export const db = {
       const snapshot = await getDocs(q);
       const liveProducts: Product[] = [];
       snapshot.forEach((docSnap) => {
-        liveProducts.push(docSnap.data() as Product);
+        const data = docSnap.data() as Product;
+        const p = { ...data, id: data?.id || docSnap.id };
+        if (deletedProdSet.has(p.id) || deletedProdSet.has(docSnap.id)) {
+          deleteDoc(doc(firestoreDb, 'products', docSnap.id)).catch(() => {});
+          return;
+        }
+        liveProducts.push(p);
       });
 
       // Update local storage cache for this business
@@ -1556,13 +1668,15 @@ export const db = {
       });
 
       // Merge enriched live products with existing local memory products so offline/new products aren't lost
-      const existingAll = this.getAllProductsRaw();
+      const existingAll = this.getAllProductsRaw().filter((p) => !deletedProdSet.has(p.id));
       const productMap = new Map<string, Product>(existingAll.map((p) => [p.id, p]));
       enrichedProducts.forEach((p) => {
-        productMap.set(p.id, p);
+        if (!deletedProdSet.has(p.id)) {
+          productMap.set(p.id, p);
+        }
       });
 
-      const updatedList = Array.from(productMap.values());
+      const updatedList = Array.from(productMap.values()).filter((p) => !deletedProdSet.has(p.id));
       this.setProductsInMemory(updatedList, true);
 
       return this.getProducts(businessId);
@@ -1872,16 +1986,37 @@ export const db = {
     const target = allProducts.find((p) => p.id === productId && (p.businessId === businessId || user.role === 'super_admin'));
     if (!target) throw new Error('Product not found');
 
+    recordTombstone('products', productId);
+
     allProducts = allProducts.filter((p) => p.id !== productId);
     this.setProductsInMemory(allProducts, true);
 
-    // Permanently delete from Cloud Firestore if authenticated
-    if (auth.currentUser) {
-      try {
-        await deleteDoc(doc(firestoreDb, 'products', productId));
-      } catch (err: any) {
-        handleFirestoreError(err, OperationType.DELETE, `products/${productId}`);
+    // Permanently delete from Cloud Firestore unconditionally
+    try {
+      await deleteDoc(doc(firestoreDb, 'products', productId));
+    } catch (err: any) {
+      console.warn('Firestore product delete notice:', err);
+    }
+
+    // Call server backend deletion
+    try {
+      if (user.role === 'super_admin') {
+        await fetch(`/api/admin/products/${productId}`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-admin-email': user.email,
+            'x-admin-name': user.name,
+          },
+        });
+      } else {
+        await fetch(`/api/products/${productId}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+        });
       }
+    } catch (srvErr) {
+      console.warn('Server product delete notice:', srvErr);
     }
 
     this.logAudit({
@@ -2471,8 +2606,12 @@ export const db = {
   // ==========================================
 
   getOrders(): Order[] {
+    const tombstones = getTombstones();
+    const deletedOrderSet = new Set(tombstones.orders);
     const list = getFromStorage<Order[]>(STORAGE_KEYS.ORDERS, INITIAL_ORDERS);
-    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return list
+      .filter((o) => o && !deletedOrderSet.has(o.id) && !deletedOrderSet.has(o.orderId))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   },
 
   getOrdersByOwner(ownerId: string, businessId?: string): Order[] {
@@ -2898,14 +3037,29 @@ export const db = {
     const target = allOrders.find((o) => o.id === orderId || o.orderId === orderId);
     if (!target) return false;
 
+    recordTombstone('orders', orderId);
+    if (target.id) recordTombstone('orders', target.id);
+    if (target.orderId) recordTombstone('orders', target.orderId);
+
     allOrders = allOrders.filter((o) => o.id !== orderId && o.orderId !== orderId);
     setToStorage(STORAGE_KEYS.ORDERS, allOrders);
 
-    if (auth.currentUser) {
-      deleteDoc(doc(firestoreDb, 'orders', target.id)).catch((err) =>
-        handleFirestoreError(err, OperationType.DELETE, `orders/${target.id}`)
-      );
-    }
+    // Unconditionally delete from Firestore
+    try {
+      deleteDoc(doc(firestoreDb, 'orders', target.id)).catch(() => {});
+    } catch {}
+
+    // Call server backend
+    try {
+      fetch(`/api/admin/orders/${target.id || orderId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-email': user.email,
+          'x-admin-name': user.name,
+        },
+      }).catch(() => {});
+    } catch {}
 
     this.logAudit({
       businessId: target.storeId !== 'MULTI' ? target.storeId : null,
