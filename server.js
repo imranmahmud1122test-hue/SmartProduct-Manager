@@ -36,6 +36,51 @@ app.all(['/sitemap.xml', '/sitemap.xml/'], (req, res) => {
 });
 
 // 2. Serve static assets from the compiled build output folder
+const assetsPath = path.join(__dirname, 'dist', 'assets');
+app.use(
+  '/assets',
+  express.static(assetsPath, {
+    maxAge: '1y',
+    immutable: true,
+    fallthrough: true,
+  })
+);
+
+// Intelligent Stale Hash Asset Fallback
+app.get('/assets/*.css', (req, res) => {
+  try {
+    if (fs.existsSync(assetsPath)) {
+      const cssFiles = fs.readdirSync(assetsPath).filter((f) => f.endsWith('.css'));
+      if (cssFiles.length > 0) {
+        res.setHeader('Content-Type', 'text/css; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.sendFile(path.join(assetsPath, cssFiles[0]));
+        return;
+      }
+    }
+  } catch {}
+  res.status(200).setHeader('Content-Type', 'text/css; charset=utf-8').send('/* fallback */');
+});
+
+app.get('/assets/*.js', (req, res) => {
+  try {
+    if (fs.existsSync(assetsPath)) {
+      const jsFiles = fs.readdirSync(assetsPath).filter((f) => f.startsWith('index-') && f.endsWith('.js'));
+      if (jsFiles.length > 0) {
+        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.sendFile(path.join(assetsPath, jsFiles[0]));
+        return;
+      }
+    }
+  } catch {}
+  res.status(200).setHeader('Content-Type', 'application/javascript; charset=utf-8').send('/* fallback */');
+});
+
+app.all('/assets/*', (req, res) => {
+  res.status(404).type('text/plain').send('Asset not found');
+});
+
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // 3. Fallback to index.html for Single Page Application routing

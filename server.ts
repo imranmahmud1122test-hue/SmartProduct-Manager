@@ -1829,7 +1829,60 @@ async function startServer() {
 
   if (isProduction && distIndexExists) {
     console.log('[Server] Production mode: Serving compiled assets from dist/');
+    const assetsPath = path.join(distPath, 'assets');
+
+    // 1. Direct Static Assets with 1-year immutable caching
+    app.use(
+      '/assets',
+      express.static(assetsPath, {
+        maxAge: '1y',
+        immutable: true,
+        fallthrough: true,
+      })
+    );
+
+    // 2. Intelligent Stale Hash Asset Fallback
+    // When Googlebot or users request older hashed assets from a previous deployment,
+    // dynamically serve the current matching asset instead of returning index.html.
+    app.get('/assets/*.css', (_req: Request, res: Response) => {
+      try {
+        if (fs.existsSync(assetsPath)) {
+          const cssFiles = fs.readdirSync(assetsPath).filter((f) => f.endsWith('.css'));
+          if (cssFiles.length > 0) {
+            res.setHeader('Content-Type', 'text/css; charset=utf-8');
+            res.setHeader('Cache-Control', 'public, max-age=3600');
+            res.sendFile(path.join(assetsPath, cssFiles[0]));
+            return;
+          }
+        }
+      } catch {}
+      res.status(200).setHeader('Content-Type', 'text/css; charset=utf-8').send('/* fallback */');
+    });
+
+    app.get('/assets/*.js', (_req: Request, res: Response) => {
+      try {
+        if (fs.existsSync(assetsPath)) {
+          const jsFiles = fs.readdirSync(assetsPath).filter((f) => f.startsWith('index-') && f.endsWith('.js'));
+          if (jsFiles.length > 0) {
+            res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+            res.setHeader('Cache-Control', 'public, max-age=3600');
+            res.sendFile(path.join(assetsPath, jsFiles[0]));
+            return;
+          }
+        }
+      } catch {}
+      res.status(200).setHeader('Content-Type', 'application/javascript; charset=utf-8').send('/* fallback */');
+    });
+
+    // 3. Any other missing asset under /assets/ returns 404 (NEVER index.html)
+    app.all('/assets/*', (_req: Request, res: Response) => {
+      res.status(404).type('text/plain').send('Asset not found');
+    });
+
+    // 4. Root static assets (logo.svg, favicon, etc.)
     app.use(express.static(distPath));
+
+    // 5. SPA Fallback for browser page navigation
     app.get('*', (_req: Request, res: Response) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
