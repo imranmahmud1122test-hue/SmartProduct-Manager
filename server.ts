@@ -1790,6 +1790,35 @@ app.post('/api/business/update-profile', async (req: Request, res: Response) => 
 });
 
 // ----------------------------------------------------------------------
+// SEO & SEARCH ENGINE CRAWLER ROUTES
+// ----------------------------------------------------------------------
+app.get('/robots.txt', (_req: Request, res: Response) => {
+  const robotsDist = path.join(process.cwd(), 'dist', 'robots.txt');
+  const robotsPublic = path.join(process.cwd(), 'public', 'robots.txt');
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  if (fs.existsSync(robotsDist)) {
+    res.sendFile(robotsDist);
+  } else if (fs.existsSync(robotsPublic)) {
+    res.sendFile(robotsPublic);
+  } else {
+    res.status(200).send("User-agent: *\nAllow: /\n\nSitemap: https://smartproduct-manager.onrender.com/sitemap.xml\n");
+  }
+});
+
+app.get('/sitemap.xml', (_req: Request, res: Response) => {
+  const sitemapDist = path.join(process.cwd(), 'dist', 'sitemap.xml');
+  const sitemapPublic = path.join(process.cwd(), 'public', 'sitemap.xml');
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+  if (fs.existsSync(sitemapDist)) {
+    res.sendFile(sitemapDist);
+  } else if (fs.existsSync(sitemapPublic)) {
+    res.sendFile(sitemapPublic);
+  } else {
+    res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url>\n    <loc>https://smartproduct-manager.onrender.com/</loc>\n    <lastmod>2026-10-04</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n</urlset>`);
+  }
+});
+
+// ----------------------------------------------------------------------
 // VITE & STATIC SERVING INTEGRATION
 // ----------------------------------------------------------------------
 async function startServer() {

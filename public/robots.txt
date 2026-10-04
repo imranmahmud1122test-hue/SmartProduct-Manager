@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://smartproduct-manager.onrender.com/sitemap.xml

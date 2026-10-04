@@ -461,9 +461,16 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
               Multi-Vendor Supermarket Marketplace & Retail OS
             </div>
 
-            <div className="flex justify-center mb-6">
-              <Logo size="xl" variant="full" showTagline={true} />
+            <div className="flex justify-center mb-2">
+              <Logo size="xl" variant="full" showTagline={false} />
             </div>
+
+            <h1 className="text-2xl sm:text-4xl md:text-5xl font-black text-slate-900 tracking-tight leading-tight mt-2">
+              Smart Product Manager (SPM)
+              <span className="block text-emerald-600 text-base sm:text-xl md:text-2xl font-bold mt-1 tracking-normal">
+                Smart Stock, Smart Business
+              </span>
+            </h1>
 
             <p className="mt-4 text-base sm:text-xl text-slate-600 font-normal leading-relaxed">
               Order fresh products directly from top supermarkets with fast home delivery, or register your own supermarket to manage products, inventory, POS, and online sales.
