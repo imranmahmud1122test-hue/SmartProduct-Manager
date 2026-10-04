@@ -97,18 +97,18 @@ export async function signInWithGooglePopup(): Promise<GoogleAuthResult> {
   }
 }
 
-// Use forced long-polling to ensure reliable connectivity across network firewalls, proxies, and preview sandboxes without initial WebSocket attempts
+// Initialize Firestore per skill guidelines with resilient auto-detect transport
 let firestoreInstance;
 try {
+  firestoreInstance = getFirestore(app, firebaseConfig.firestoreDatabaseId || undefined);
+} catch {
   firestoreInstance = initializeFirestore(
     app,
     {
-      experimentalForceLongPolling: true,
+      experimentalAutoDetectLongPolling: true,
     },
     firebaseConfig.firestoreDatabaseId || undefined
   );
-} catch {
-  firestoreInstance = getFirestore(app, firebaseConfig.firestoreDatabaseId || undefined);
 }
 
 export const firestoreDb = firestoreInstance;
@@ -171,27 +171,19 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   }
 }
 
-// Test connection on boot with a fast timeout to prevent blocking when offline
+// Validate Connection to Firestore (Per Firebase Integration Skill)
 export async function testFirestoreConnection(): Promise<boolean> {
   try {
     const testDocRef = doc(firestoreDb, 'test', 'connection');
-    
-    // Race getDocFromServer against a 3.5-second timeout to check backend reachability
-    const networkPromise = getDocFromServer(testDocRef);
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Connection timeout')), 3500)
-    );
-
-    await Promise.race([networkPromise, timeoutPromise]);
+    await getDocFromServer(testDocRef);
     return true;
   } catch (error: any) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    // If the server responded with permission-denied or any Firebase code, it reached the server
-    if (error?.code === 'permission-denied' || errMsg.includes('insufficient permissions')) {
-      return true;
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.warn('[Firestore] The client is offline. Operating with local storage cache.');
+      return false;
     }
-    console.warn('[Firestore] Connection probe could not reach backend. Running in offline/cached mode:', errMsg);
-    return false;
+    // Any response from the server (e.g. document does not exist, permission check) indicates the backend was reached
+    return true;
   }
 }
 

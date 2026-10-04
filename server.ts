@@ -1820,7 +1820,21 @@ app.post('/api/business/update-profile', async (req: Request, res: Response) => 
 // VITE & STATIC SERVING INTEGRATION
 // ----------------------------------------------------------------------
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
+  const distPath = path.join(process.cwd(), 'dist');
+  const distIndexExists = fs.existsSync(path.join(distPath, 'index.html'));
+  const isProduction =
+    process.env.NODE_ENV === 'production' ||
+    Boolean(process.env.RENDER) ||
+    Boolean(process.env.PORT && !process.env.K_SERVICE && distIndexExists);
+
+  if (isProduction && distIndexExists) {
+    console.log('[Server] Production mode: Serving compiled assets from dist/');
+    app.use(express.static(distPath));
+    app.get('*', (_req: Request, res: Response) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  } else {
+    console.log('[Server] Dev mode: Attaching Vite development middleware');
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
@@ -1829,12 +1843,6 @@ async function startServer() {
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req: Request, res: Response) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
   }
 
   app.listen(PORT, '0.0.0.0', () => {
