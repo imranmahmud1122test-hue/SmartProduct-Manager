@@ -19,9 +19,15 @@ services:
       - path: /robots.txt
         name: Content-Type
         value: text/plain; charset=utf-8
+      - path: /robots.txt
+        name: X-Robots-Tag
+        value: all
       - path: /sitemap.xml
         name: Content-Type
         value: application/xml; charset=utf-8
+      - path: /sitemap.xml
+        name: X-Robots-Tag
+        value: all
       - path: /*
         name: X-Frame-Options
         value: SAMEORIGIN

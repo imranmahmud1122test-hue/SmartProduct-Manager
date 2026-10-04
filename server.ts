@@ -34,6 +34,101 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 // ----------------------------------------------------------------------
+// FIRESTORE CONFIGURATION & DYNAMIC SITEMAP GENERATOR
+// ----------------------------------------------------------------------
+let firestoreConfig: { projectId?: string; firestoreDatabaseId?: string; apiKey?: string } = {};
+try {
+  const cfgPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  if (fs.existsSync(cfgPath)) {
+    firestoreConfig = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
+  }
+} catch (e: any) {
+  console.warn('[Server] Could not load firebase-applet-config.json:', e?.message || e);
+}
+
+const FIREBASE_PROJECT_ID = process.env.VITE_FIREBASE_PROJECT_ID || firestoreConfig.projectId;
+const FIREBASE_DB_ID = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || firestoreConfig.firestoreDatabaseId;
+const FIREBASE_API_KEY = process.env.VITE_FIREBASE_API_KEY || firestoreConfig.apiKey;
+
+async function generateDynamicSitemap(): Promise<string> {
+  const baseUrl = 'https://smartproduct-manager.onrender.com';
+  const today = new Date().toISOString().split('T')[0];
+
+  const entries: Array<{ loc: string; lastmod: string; changefreq: string; priority: string }> = [
+    { loc: `${baseUrl}/`, lastmod: today, changefreq: 'daily', priority: '1.0' },
+    { loc: `${baseUrl}/?view=catalog`, lastmod: today, changefreq: 'daily', priority: '0.9' },
+    { loc: `${baseUrl}/?view=stores`, lastmod: today, changefreq: 'daily', priority: '0.8' },
+  ];
+
+  try {
+    if (FIREBASE_PROJECT_ID && FIREBASE_DB_ID) {
+      // 1. Fetch public products from Firestore REST API
+      const prodsUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/${FIREBASE_DB_ID}/documents/products?pageSize=100&key=${FIREBASE_API_KEY}`;
+      const prodRes = await fetch(prodsUrl);
+      if (prodRes.ok) {
+        const prodData: any = await prodRes.json();
+        if (Array.isArray(prodData.documents)) {
+          for (const doc of prodData.documents) {
+            const docId = doc.name ? doc.name.split('/').pop() : null;
+            if (docId) {
+              const updatedAt = doc.updateTime ? doc.updateTime.split('T')[0] : today;
+              entries.push({
+                loc: `${baseUrl}/?product=${encodeURIComponent(docId)}`,
+                lastmod: updatedAt,
+                changefreq: 'weekly',
+                priority: '0.8',
+              });
+            }
+          }
+        }
+      }
+
+      // 2. Fetch public stores/businesses from Firestore REST API
+      const bizUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/${FIREBASE_DB_ID}/documents/businesses?pageSize=50&key=${FIREBASE_API_KEY}`;
+      const bizRes = await fetch(bizUrl);
+      if (bizRes.ok) {
+        const bizData: any = await bizRes.json();
+        if (Array.isArray(bizData.documents)) {
+          for (const doc of bizData.documents) {
+            const docId = doc.name ? doc.name.split('/').pop() : null;
+            if (docId) {
+              const updatedAt = doc.updateTime ? doc.updateTime.split('T')[0] : today;
+              entries.push({
+                loc: `${baseUrl}/?store=${encodeURIComponent(docId)}`,
+                lastmod: updatedAt,
+                changefreq: 'weekly',
+                priority: '0.8',
+              });
+            }
+          }
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn('[Dynamic Sitemap] Notice:', err?.message || err);
+  }
+
+  const xmlEntries = entries
+    .map(
+      (e) => `  <url>
+    <loc>${e.loc}</loc>
+    <lastmod>${e.lastmod}</lastmod>
+    <changefreq>${e.changefreq}</changefreq>
+    <priority>${e.priority}</priority>
+  </url>`
+    )
+    .join('\n');
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
+        http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+${xmlEntries}
+</urlset>`;
+}
+
+// ----------------------------------------------------------------------
 // DIRECT PUBLIC STATIC SEO ENDPOINTS (Immediate response, zero delay)
 // ----------------------------------------------------------------------
 const ROBOTS_TXT_CONTENT = `User-agent: *\nAllow: /\n\nSitemap: https://smartproduct-manager.onrender.com/sitemap.xml\n`;
@@ -42,22 +137,35 @@ app.all(['/robots.txt', '/robots.txt/'], (_req: Request, res: Response) => {
   res.status(200);
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+  res.setHeader('X-Robots-Tag', 'all');
   res.send(ROBOTS_TXT_CONTENT);
 });
 
-app.all(['/sitemap.xml', '/sitemap.xml/'], (_req: Request, res: Response) => {
+app.all(['/sitemap.xml', '/sitemap.xml/'], async (_req: Request, res: Response) => {
   res.status(200);
   res.setHeader('Content-Type', 'application/xml; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
-  const sitemapDist = path.join(process.cwd(), 'dist', 'sitemap.xml');
-  const sitemapPublic = path.join(process.cwd(), 'public', 'sitemap.xml');
-  if (fs.existsSync(sitemapDist)) {
-    res.sendFile(sitemapDist);
-  } else if (fs.existsSync(sitemapPublic)) {
-    res.sendFile(sitemapPublic);
-  } else {
-    res.send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url>\n    <loc>https://smartproduct-manager.onrender.com/</loc>\n    <lastmod>2026-10-04</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n</urlset>`);
+  res.setHeader('Cache-Control', 'public, max-age=1800, stale-while-revalidate=3600');
+  res.setHeader('X-Robots-Tag', 'all');
+  try {
+    const dynamicSitemap = await generateDynamicSitemap();
+    res.send(dynamicSitemap);
+  } catch {
+    const sitemapDist = path.join(process.cwd(), 'dist', 'sitemap.xml');
+    const sitemapPublic = path.join(process.cwd(), 'public', 'sitemap.xml');
+    if (fs.existsSync(sitemapDist)) {
+      res.sendFile(sitemapDist);
+    } else if (fs.existsSync(sitemapPublic)) {
+      res.sendFile(sitemapPublic);
+    } else {
+      res.send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url>\n    <loc>https://smartproduct-manager.onrender.com/</loc>\n    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n</urlset>`);
+    }
   }
+});
+
+// Protect private API, Admin, and Dashboard endpoints with X-Robots-Tag: noindex, nofollow
+app.use(['/api', '/admin', '/dashboard', '/superadmin', '/settings'], (_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+  next();
 });
 
 app.use(express.json({ limit: '10mb' }));
@@ -95,21 +203,6 @@ setInterval(() => {
     }
   }
 }, 5 * 60 * 1000);
-
-// Firestore REST API configuration for server-side verification persistence
-let firestoreConfig: { projectId?: string; firestoreDatabaseId?: string; apiKey?: string } = {};
-try {
-  const cfgPath = path.join(process.cwd(), 'firebase-applet-config.json');
-  if (fs.existsSync(cfgPath)) {
-    firestoreConfig = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
-  }
-} catch (e: any) {
-  console.warn('[Server] Could not load firebase-applet-config.json:', e?.message || e);
-}
-
-const FIREBASE_PROJECT_ID = process.env.VITE_FIREBASE_PROJECT_ID || firestoreConfig.projectId;
-const FIREBASE_DB_ID = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || firestoreConfig.firestoreDatabaseId;
-const FIREBASE_API_KEY = process.env.VITE_FIREBASE_API_KEY || firestoreConfig.apiKey;
 
 // Initialize Firebase Admin SDK
 try {
