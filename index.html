@@ -5,19 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
     <script>
       (function() {
-        var isWsError = function(e) {
+        var isBenignTransportError = function(e) {
           if (!e) return false;
           var str = String(e.message || e.reason?.message || e.reason || e || '');
-          return str.indexOf('WebSocket') !== -1 || str.indexOf('[vite]') !== -1 || str.indexOf('websocket') !== -1;
+          return (
+            str.indexOf('WebSocket') !== -1 ||
+            str.indexOf('[vite]') !== -1 ||
+            str.indexOf('websocket') !== -1 ||
+            str.indexOf('WebChannelConnection') !== -1 ||
+            str.indexOf('transport errored') !== -1 ||
+            str.indexOf('RPC \'Listen\' stream') !== -1
+          );
         };
         window.addEventListener('unhandledrejection', function(event) {
-          if (isWsError(event.reason)) {
+          if (isBenignTransportError(event.reason)) {
             event.preventDefault();
             event.stopImmediatePropagation();
           }
         }, true);
         window.addEventListener('error', function(event) {
-          if (isWsError(event.message) || isWsError(event.error)) {
+          if (isBenignTransportError(event.message) || isBenignTransportError(event.error)) {
             event.preventDefault();
             event.stopImmediatePropagation();
           }

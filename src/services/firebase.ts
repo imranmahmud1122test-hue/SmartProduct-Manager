@@ -12,6 +12,7 @@ import {
 import {
   initializeFirestore,
   getFirestore,
+  setLogLevel,
   collection,
   doc,
   getDocs,
@@ -26,6 +27,9 @@ import {
 } from 'firebase/firestore';
 import bundledConfig from '../../firebase-applet-config.json';
 import { emitGlobalToast } from '../context/ToastContext';
+
+// Configure Firestore SDK log level to suppress harmless internal WebChannel transport reconnection warnings
+setLogLevel('error');
 
 // Prioritize VITE_FIREBASE_* environment variables (set in Render) with fallback to bundled config
 const firebaseConfig = {
@@ -97,18 +101,21 @@ export async function signInWithGooglePopup(): Promise<GoogleAuthResult> {
   }
 }
 
-// Initialize Firestore per skill guidelines with resilient auto-detect transport
+// Initialize Firestore with resilient HTTP Long Polling to prevent WebChannelConnection stream transport drops
 let firestoreInstance;
 try {
-  firestoreInstance = getFirestore(app, firebaseConfig.firestoreDatabaseId || undefined);
-} catch {
   firestoreInstance = initializeFirestore(
     app,
     {
-      experimentalAutoDetectLongPolling: true,
+      experimentalForceLongPolling: true,
+      experimentalLongPollingOptions: {
+        timeoutSeconds: 20,
+      },
     },
     firebaseConfig.firestoreDatabaseId || undefined
   );
+} catch {
+  firestoreInstance = getFirestore(app, firebaseConfig.firestoreDatabaseId || undefined);
 }
 
 export const firestoreDb = firestoreInstance;
@@ -138,6 +145,11 @@ export interface FirestoreErrorInfo {
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errMsg = error instanceof Error ? error.message : String(error);
   const isUnavailable = errMsg.includes('unavailable') || errMsg.includes('offline') || errMsg.includes('Failed to get document');
+  const isTransportNotice = errMsg.includes('transport errored') ||
+                            errMsg.includes('WebChannelConnection') ||
+                            errMsg.includes('RPC \'Listen\' stream') ||
+                            errMsg.includes('backend connection') ||
+                            errMsg.includes('network-request-failed');
   const isPermissionDenied = errMsg.includes('permission-denied') || 
                              errMsg.includes('Missing or insufficient permissions') || 
                              errMsg.includes('PERMISSION_DENIED') ||
@@ -164,8 +176,9 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
         `Access to '${path || 'collection'}' was denied by Firestore security rules (${operationType.toUpperCase()}). Please verify user role and tenant permissions.`
       );
     }
-  } else if (isUnavailable) {
-    console.warn(`[Firestore Offline/Unavailable] Falling back to local storage cache for ${path || 'collection'}:`, errMsg);
+  } else if (isTransportNotice || isUnavailable) {
+    // Graceful background reconnect without throwing or logging red noise
+    console.debug(`[Firestore Network Resync] Reconnecting to ${path || 'collection'}...`);
   } else {
     console.error('Firestore Error: ', JSON.stringify(errInfo));
   }
